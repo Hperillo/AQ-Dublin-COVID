@@ -1,0 +1,265 @@
+---
+title: "Mobility Data Analysis"
+author: "Henry Perillo"
+date: "7/12/2020"
+output: html_document
+---
+
+This markdown file details the processing and creation of mobility graph from Google COVID-19 mobility datasets.
+
+Load necessary packages:
+```{r message = FALSE, warning = FALSE}
+# Clear working environment:
+rm(list = ls())
+
+# Load Packages
+library(dplyr)
+library(plyr)
+library(readr)
+library(Hmisc)
+library(psych)
+library(rmweather)
+library(ranger)
+library(hexbin)
+library(tidyr)
+library(stringr)
+library(ggplot2)
+library(data.table)
+library(lubridate)
+library(Rmisc)
+library(knitr)
+```
+
+Import dataset:
+```{r message = FALSE, warning = FALSE}
+# Set working directory
+setwd("~/Desktop/Research_Project/Data/AQ/Preliminary_Data")
+
+# Call file
+mobility <- read_csv('Global_Mobility_Report.csv')
+```
+
+Create dataframe:
+```{r message = FALSE, warning = FALSE}
+# Isolate necessary rows
+mobility <- mobility %>%
+  filter(country_region == 'Ireland',
+         sub_region_1 == 'County Dublin')
+
+# Turn 'date' column into Date format
+mobility <- mobility %>%
+  mutate(date = gsub('/', '-', date))
+mobility$date <- as.Date(mobility$date, tryFormats = c("%m-%d-%y"))
+
+# Rename columns
+mobility <- mobility %>%
+  dplyr::rename(Retail = retail_and_recreation_percent_change_from_baseline,
+         Grocery = grocery_and_pharmacy_percent_change_from_baseline,
+         Parks = parks_percent_change_from_baseline,
+         Transit = transit_stations_percent_change_from_baseline,
+         Workplace = workplaces_percent_change_from_baseline,
+         Residential = residential_percent_change_from_baseline)
+```
+
+Make figure for entire lockdown period:
+```{r message = FALSE, warning = FALSE}
+# Mobility lineplot
+Mobility_plot <- ggplot(data = mobility, aes(x = date))+
+  geom_line(aes(y = Retail, group = 1, colour = "Retail"))+
+  geom_line(aes(y = Grocery, group = 1, colour = "Grocery"))+
+  geom_line(aes(y = Parks, group = 1, colour = "Parks"))+
+  geom_line(aes(y = Transit, group = 1, colour = "Transit"))+
+  geom_line(aes(y = Workplace, group = 1, colour= "Workplace"))+
+  geom_line(aes(y = Residential, group = 1, colour = "Residential"))+
+  labs(x= 'Date',
+       y = '% Change from Baseline',
+       title = "Mobility Changes During COVID Lockdown",
+       subtitle = "Co. Dublin",
+       color = "Sector")+
+  geom_vline(xintercept=as.numeric(mobility$date[c(26)]),
+             linetype=2, colour="black")+
+  geom_hline(yintercept = 0, linetype = 1, colour = "black")+
+  theme_bw()
+Mobility_plot
+```
+
+Create time period column and attain averages for each time period:
+```{r message = FALSE, warning = FALSE}
+# Create 'Month,' 'Year,' and 'Date' columns
+mobility <- mobility %>%
+  mutate(Year = str_sub(date,3,4),
+         Month = str_sub(date,6,7),
+         Date = str_sub(date,9,10))
+
+# Add 'Period' column
+mobility <- mobility  %>% 
+  mutate(Period = case_when(
+    Month == '02' ~ 'Before Lockdown',
+    Month == '03' & Date < 11 ~ 'Before Lockdown', 
+    Month == '03' & Date > 10 ~ 'During Lockdown',
+    Month > '03' ~ 'During Lockdown'))
+
+# Turn 'mobility' into a factor
+mobility$Period <- as.factor(mobility$Period)
+
+# Re-format data frame
+mobility_se <- mobility %>%
+  gather('Retail', 'Parks', 'Grocery', 'Transit', 'Workplace', 'Residential', key = "Sector", value = '% Change from BAU')
+```
+
+Examine differences between weekdays and weekends:
+```{r message = FALSE, warning = FALSE}
+# Make 'date' column as.POSIXct
+mobility_se$date <- lubridate::parse_date_time(mobility_se$date, "%Y-%m-%d")
+
+# Obtain 'weekday' columns 
+mobility_se <- mobility_se %>% 
+  dplyr::rename(value = '% Change from BAU') %>%
+  rmw_prepare_data(na.rm = TRUE)
+
+# Isolate May
+may_mobility <- mobility_se %>%
+  filter(Month == '05')
+
+# Identify weekdays and weekends
+may_mobility <- may_mobility %>%
+  mutate(`Day_Type` = case_when(
+    weekday <= 5 ~ 'Weekday',
+    weekday >= 6 ~ 'Weekend'))
+
+# Create summary dataframe for graphing
+mobility_may <- summarySE(may_mobility,
+                          measurevar= 'value',
+                          groupvars=c('Sector', "Day_Type"))
+```
+
+May multiplot for mobility between weekdays and weekends: 
+```{r message = FALSE, warning = FALSE}
+# Barplot
+multi_may_mobility <- ggplot(mobility_may, aes(x=Day_Type, y= `value`)) + 
+  geom_point(stat="identity",
+             size=1) +      # Thinner lines
+  geom_errorbar(aes(ymin=value-se, ymax=value+se),
+                size=.3,    # Thinner lines
+                width=.2,
+                position=position_dodge(.9)) +
+  labs(x = "Days",
+       y = "% Change from BAU",
+       title = "Weekdays vs. Weekends",
+       subtitle = "Mobility Changes by Sector") + 
+  theme_bw()+
+  facet_wrap(~ Sector, dir = 'v')+
+  theme(
+    strip.text.x = element_text(margin = margin(2, 0, 2, 0), size = 12))
+multi_may_mobility
+```
+
+Analyze differences between weekdays and weekends: 
+```{r}
+# Get 'Weekday' column
+mobility$date <- lubridate::parse_date_time(mobility$date, "%Y-%m-%d")
+mobility <- mobility %>% 
+  dplyr::rename(value = 'Retail') %>%
+  rmw_prepare_data(na.rm = TRUE)
+
+# Separate weekdays and weekends
+mobility <- mobility %>%
+  mutate(`Day_Type` = case_when(
+    weekday <= 5 ~ 'Weekday',
+    weekday >= 6 ~ 'Weekend'))
+
+# Isolate the month of May
+mobility_in_May <- mobility %>%
+  filter(Month == '05')
+```
+
+
+## Tests for Normality: 
+
+Retail: 
+```{r message = FALSE, warning = FALSE}
+# Build the linear model
+Retail_model_day <- lm(value ~ Day_Type, data = mobility_in_May)
+# Create a QQ plot of residuals
+qqnorm(residuals(Retail_model_day))
+qqline(residuals(Retail_model_day), col = "red")
+
+# Shapiro-wilk test
+shapiro.test(residuals(Retail_model_day))
+```
+
+Grocery: 
+```{r message = FALSE, warning = FALSE}
+# Build the linear model
+Grocery_model_day <- lm(Grocery ~ Day_Type, data = mobility_in_May)
+# Create a QQ plot of residuals
+qqnorm(residuals(Grocery_model_day))
+qqline(residuals(Grocery_model_day), col = "red")
+
+# Shapiro-wilk test
+shapiro.test(residuals(Grocery_model_day))
+```
+
+Parks: 
+```{r message = FALSE, warning = FALSE}
+# Build the linear model
+Parks_model_day <- lm(Parks ~ Day_Type, data = mobility_in_May)
+# Create a QQ plot of residuals
+qqnorm(residuals(Parks_model_day))
+qqline(residuals(Parks_model_day), col = "red")
+
+# Shapiro-wilk test
+shapiro.test(residuals(Parks_model_day))
+```
+
+Workplace: 
+```{r message = FALSE, warning = FALSE}
+# Build the linear model
+Workplace_model_day <- lm(Workplace ~ Day_Type, data = mobility_in_May)
+# Create a QQ plot of residuals
+qqnorm(residuals(Workplace_model_day))
+qqline(residuals(Workplace_model_day), col = "red")
+
+# Shapiro-wilk test
+shapiro.test(residuals(Workplace_model_day))
+```
+
+Transit: 
+```{r message = FALSE, warning = FALSE}
+# Build the linear model
+Transit_model_day <- lm(Transit ~ Day_Type, data = mobility_in_May)
+# Create a QQ plot of residuals
+qqnorm(residuals(Transit_model_day))
+qqline(residuals(Transit_model_day), col = "red")
+
+# Shapiro-wilk test
+shapiro.test(residuals(Transit_model_day))
+```
+
+Residential: 
+```{r message = FALSE, warning = FALSE}
+# Build the linear model
+Residential_model_day <- lm(Residential ~ Day_Type, data = mobility_in_May)
+# Create a QQ plot of residuals
+qqnorm(residuals(Residential_model_day))
+qqline(residuals(Residential_model_day), col = "red")
+
+# Shapiro-wilk test
+shapiro.test(residuals(Residential_model_day))
+```
+
+Statistics:
+```{r message = FALSE, warning = FALSE}
+# Non-parametric wilcoxon tests
+grocery_day.t <- t.test(Grocery ~ Day_Type, data = mobility_in_May)
+grocery_day.t
+
+workplace_day.t <- t.test(Workplace ~ Day_Type, data = mobility_in_May)
+workplace_day.t
+
+parks_day.t <- t.test(Parks ~ Day_Type, data = mobility_in_May)
+parks_day.t
+
+transit_day.t <- t.test(Transit ~ Day_Type, data = mobility_in_May)
+transit_day.t
+```

@@ -1,0 +1,368 @@
+---
+title: "Meteorological Data Analysis - Hourly data"
+author: "Henry Perillo"
+date: "7/27/2020"
+output: html_document
+---
+
+This R Markdown File details the methodology used to analyze meteorological data (from the Dublin Airport Met Eirann Station) across January, February, March, April, May, and June for the years 2017-2020. The aim of this analysis is to determine a month or months (if any) that do not display a signficiant difference in average hourly precipitation (in millimeters), or average hourly windspeed (in m/s). Such month can be used to more confidently attribute differences in pollution concentration to lockdown protocols, rather than meterological factors. 
+
+# Data Input
+
+Library packages:
+```{r message = FALSE, warning = FALSE}
+# Clear R Studio environment
+rm(list = ls())
+
+# Load packages
+library(dplyr)
+library(readr)
+library(tidyr)
+library(stringr)
+library(ggplot2)
+library(data.table)
+library(rio)
+library(purrr)
+library(rmweather)
+library(ranger)
+library(hexbin)
+library(lubridate)
+library(ggplot2)
+library(Rmisc)
+```
+
+Load weather data:
+```{r message = FALSE, warning = FALSE}
+# Set working directory.
+setwd("~/Desktop/Research_Project/Data/AQ/Preliminary_Data")
+
+# Load csv
+Weather <- read_csv("Hourly_Met_Data_Dublin_Airport.csv")
+```
+
+
+# Analysis
+
+Isolate precipiation and wind speed variables:
+```{r message = FALSE, warning = FALSE}
+# Isolate weather variables
+Weather <- Weather %>%
+  transmute(date = date,
+            rain = rain, 
+            wdsp = wdsp * 0.51444444444) #convert wind speed from knots to m/s
+
+# Turn 'date' column into as.POSIXct
+Weather$date <- dmy_hm(Weather$date)
+```
+
+Create weather dataframe:
+```{r message = FALSE, warning = FALSE}
+# Get date/hour/year/month columns
+Weather_Daily <- Weather %>%
+  mutate(Year = str_sub(date,3,4),
+         Month = str_sub(date,6,7),
+         Date = str_sub(date,9,10),
+        Hour = str_sub(date,12,13))
+
+# Filter for appropriate years
+Weather_Daily <- Weather_Daily %>%
+  filter(Year >= "17",
+         Year < '21')
+
+# Filter for appropriate months
+Weather_Daily_COVID <- Weather_Daily %>%
+  filter(Month < "07")
+```
+
+Check the residuals of each variable for normality. 
+
+Residuals for precipitation:
+```{r message = FALSE, warning = FALSE}
+# Create the Dataframe
+Precip_Daily_COVID <- summarySE(Weather_Daily_COVID,
+                                measurevar= "rain",
+                                groupvars=c("Month", "Year", "Date"))
+
+# Build the linear model
+precip_model <- lm(rain ~ Year, data = Precip_Daily_COVID)
+
+# Create a QQ plot of residuals
+qqnorm(residuals(precip_model))
+qqline(residuals(precip_model), col = "red")
+
+# Shapiro-wilk test
+shapiro.test(residuals(precip_model))
+```
+
+Residuals for wind speeds:
+```{r message = FALSE, warning = FALSE}
+# Create the Dataframe
+Wind_Daily_COVID <- summarySE(Weather_Daily_COVID,
+                              measurevar= "wdsp",
+                              groupvars=c("Month", "Year", "Date"))
+
+# Build the linear model
+wind_model <- lm(wdsp ~ Year, data = Wind_Daily_COVID)
+
+# Create a QQ plot of residuals
+qqnorm(residuals(wind_model))
+qqline(residuals(wind_model), col = "red")
+
+# Shapiro-wilk test
+shapiro.test(residuals(wind_model))
+```
+
+Since the data is not normally distributed, we will use non-parametric statistical tests to calculate differences between 2017-2019, and 2020 experimental timeframes. 
+
+# Precipitation 
+Create the precipitation dataframe:
+```{r message = FALSE, warning = FALSE}
+# Dataframe
+Precip_Daily_COVID <- Precip_Daily_COVID %>%
+  mutate(month = case_when(
+    Month == '01' ~ 'January',
+    Month == '02' ~ 'February',
+    Month == '03' ~ 'March',
+    Month == '04' ~ 'April',
+    Month == '05' ~ 'May',
+    Month == '06' ~ 'June',))
+```
+
+Precipitaion barplots:
+``` {r message = FALSE, warning = FALSE}
+# Create sub-frames to allow for easier graphical visualization
+Precip_17_20_1 <- Precip_Daily_COVID %>%
+  filter(Month < '04')
+Precip_17_20_2 <- Precip_Daily_COVID %>%
+  filter(Month > '03')
+
+# Barplot plate 1
+multi_precip1 <- ggplot(data = Precip_17_20_1, aes(Date, rain, position = "dodge", fill = Year)) +
+  geom_bar(position="dodge", stat = "identity")+
+  labs(x = 'Date',
+       y = 'Avg Precip (mm)',
+       title = "Average Monthly Precipitation",
+       color = "Year")+
+  facet_wrap(~ Month+month, dir = 'v')+
+  theme(
+    strip.text.x = element_text(margin = margin(2, 0, 2, 0)))
+multi_precip1
+
+# Barplot plate 2
+multi_precip2 <- ggplot(data = Precip_17_20_2, aes(Date, rain, position = "dodge", fill = Year)) +
+  geom_bar(position="dodge", stat = "identity")+
+  labs(x = 'Date',
+       y = 'Avg Precip (mm)',
+       title = "Average Hourly Precipitation",
+       color = "Year")+
+  facet_wrap(~ Month+month, dir = 'v')+
+  theme(
+    strip.text.x = element_text(margin = margin(2, 0, 2, 0)))
+multi_precip2
+```
+
+Monthly precipitaion averages:
+```{r message = FALSE, warning = FALSE}
+# Create singular dataframe with monthly averages
+Precip_Daily_COVID_bar <- summarySE(Precip_Daily_COVID,
+                              measurevar= "rain",
+                              groupvars=c("Month", "Year"))
+
+# Add month ID to facilitate plate visualization
+Precip_Daily_COVID_bar <- Precip_Daily_COVID_bar %>%
+  mutate(month = case_when(
+    Month == '01' ~ 'January',
+    Month == '02' ~ 'February',
+    Month == '03' ~ 'March',
+    Month == '04' ~ 'April',
+    Month == '05' ~ 'May',
+    Month == '06' ~ 'June',))
+
+# Produce plot
+multi_precip <- ggplot(Precip_Daily_COVID_bar, aes(x=Year, y=rain)) + 
+  geom_point(stat="identity",
+           size=1) +      # Thinner lines
+  geom_errorbar(aes(ymin=rain-se, ymax=rain+se),
+                size=.3,    # Thinner lines
+                width=.2,
+                position=position_dodge(.9)) +
+  labs(x = "Year",
+       y = "Average Precipitation (mm)",
+       title = "Average Monthly Precipitation") + 
+  theme_bw()+
+  facet_wrap(~ Month+month, dir = 'v')+
+  theme(
+    strip.text.x = element_text(margin = margin(2, 0, 2, 0), size = 12))
+multi_precip
+```
+
+Monthly precipitation statistics: 
+```{r message = FALSE, warning = FALSE}
+# Create a separate dataframe for each month
+Jan_Daily_Precip <- Precip_Daily_COVID %>%
+  filter(Month == '01')
+Feb_Daily_Precip <- Precip_Daily_COVID %>%
+  filter(Month == '02')
+Mar_Daily_Precip <- Precip_Daily_COVID %>%
+  filter(Month == '03')
+Apr_Daily_Precip <- Precip_Daily_COVID %>%
+  filter(Month == '04')
+May_Daily_Precip <- Precip_Daily_COVID %>%
+  filter(Month == '05')
+Jun_Daily_Precip <- Precip_Daily_COVID %>%
+  filter(Month == '06')
+
+# Non-parametric kruskal-wallis tests for each month
+Jan_rain.w <- kruskal.test(rain ~ Year, data = Jan_Daily_Precip)
+Jan_rain.w
+Feb_rain.w <- kruskal.test(rain ~ Year, data = Feb_Daily_Precip)
+Feb_rain.w
+Mar_rain.w <- kruskal.test(rain ~ Year, data = Mar_Daily_Precip)
+Mar_rain.w
+Apr_rain.w <- kruskal.test(rain ~ Year, data = Apr_Daily_Precip)
+Apr_rain.w
+May_rain.w <- kruskal.test(rain ~ Year, data = May_Daily_Precip)
+May_rain.w
+Jun_rain.w <- kruskal.test(rain ~ Year, data = Jun_Daily_Precip)
+Jun_rain.w
+```
+
+
+# Wind Speed
+Create the windspeed dataframe:
+```{r message = FALSE, warning = FALSE}
+# Add month IDs to wind speed master dataframe
+Wind_Daily_COVID <- Wind_Daily_COVID %>%
+  mutate(month = case_when(
+    Month == '01' ~ 'January',
+    Month == '02' ~ 'February',
+    Month == '03' ~ 'March',
+    Month == '04' ~ 'April',
+    Month == '05' ~ 'May',
+    Month == '06' ~ 'June',))
+
+# Create separate dataframes for 2017-2020 
+Wind_17 <- Wind_Daily_COVID %>%
+  filter(Year == '17')
+Wind_18 <- Wind_Daily_COVID %>%
+  filter(Year == '18')
+Wind_19 <- Wind_Daily_COVID %>%
+  filter(Year == '19')
+Wind_20 <- Wind_Daily_COVID %>%
+  filter(Year == '20')
+Wind_20 <- Wind_20[-60,]
+
+# Re-bind individual dataframes into a master for linear plotting
+Wind_17_20 <- cbind(Wind_17, Wind_18, Wind_19, Wind_20)
+Wind_17_20 <- Wind_17_20[,-c(9:11, 18:20, 27:29)]
+```
+
+Windspeed barplots:
+```{r message = FALSE, warning = FALSE}
+# Create sub-frames to allow for easier graphical visualization
+Wind_17_20_1 <- Wind_17_20 %>%
+  filter(Month < '04')
+Wind_17_20_2 <- Wind_17_20 %>%
+  filter(Month > '03')
+
+# Line plot plate 1
+multi_wind1 <- ggplot(data = Wind_17_20_1, aes(Date)) +
+  geom_line(aes(y = wdsp, group = 1, colour = "2017")) +
+  geom_line(aes(y = wdsp.1, group = 1, colour = "2018")) + 
+  geom_line(aes(y = wdsp.2, group = 1, colour = "2019")) +
+  geom_line(aes(y = wdsp.3, group = 1, colour = "2020")) + 
+  labs(x = 'Date',
+       y = 'Avg Wind Speed (m/s)',
+       title = "Average Monthly Wind Speed",
+       color = "Year")+
+  ylim(0,12)+
+  facet_wrap(~ Month+month, dir = 'v')+
+  theme(
+    strip.text.x = element_text(margin = margin(2, 0, 2, 0)))
+multi_wind1
+
+# Line plot plate 2
+multi_wind2 <- ggplot(data = Wind_17_20_2, aes(Date)) +
+  geom_line(aes(y = wdsp, group = 1, colour = "2017")) +
+  geom_line(aes(y = wdsp.1, group = 1, colour = "2018")) + 
+  geom_line(aes(y = wdsp.2, group = 1, colour = "2019")) +
+  geom_line(aes(y = wdsp.3, group = 1, colour = "2020")) + 
+  labs(x = 'Date',
+       y = 'Avg Wind Speed (m/s)',
+       title = "Average Monthly Wind Speed",
+       color = "Year")+
+  ylim(0,12)+
+  facet_wrap(~ Month+month, dir = 'v')+
+  theme(
+    strip.text.x = element_text(margin = margin(2, 0, 2, 0)))
+multi_wind2
+```
+
+Monthly wind averages:
+```{r message = FALSE, warning = FALSE}
+# Create singular dataframe with monthly averages
+Wind_Daily_COVID_bar <- summarySE(Wind_Daily_COVID,
+                              measurevar= "wdsp",
+                              groupvars=c("Month", "Year"))
+
+# Add month IDs to wind speed master dataframe
+Wind_Daily_COVID_bar <- Wind_Daily_COVID_bar %>%
+  mutate(month = case_when(
+    Month == '01' ~ 'January',
+    Month == '02' ~ 'February',
+    Month == '03' ~ 'March',
+    Month == '04' ~ 'April',
+    Month == '05' ~ 'May',
+    Month == '06' ~ 'June',))
+
+# Produce plot
+multi_Wind <- ggplot(Wind_Daily_COVID_bar, aes(x=Year, y=wdsp)) + 
+  geom_point(stat="identity",
+             size=1) +      # Thinner lines
+  geom_errorbar(aes(ymin=wdsp-se, ymax=wdsp+se),
+                size=.3,    # Thinner lines
+                width=.2,
+                position=position_dodge(.9)) +
+  labs(x = "Year",
+       y = "Average Wind Speed (m/s)",
+       title = "Daily Average Wind Speed") + 
+  theme_bw()+
+  facet_wrap(~ Month+month, dir = 'v')+
+  theme(
+    strip.text.x = element_text(margin = margin(2, 0, 2, 0), size = 12))
+multi_Wind
+```
+
+Monthly wind statistics: 
+```{r message = FALSE, warning = FALSE}
+# Create a separate dataframe for each month:
+Jan_Daily_Wind <- Wind_Daily_COVID %>%
+  filter(Month == '01')
+Feb_Daily_Wind <- Wind_Daily_COVID %>%
+  filter(Month == '02')
+Mar_Daily_Wind <- Wind_Daily_COVID %>%
+  filter(Month == '03')
+Apr_Daily_Wind <- Wind_Daily_COVID %>%
+  filter(Month == '04')
+May_Daily_Wind <- Wind_Daily_COVID %>%
+  filter(Month == '05')
+Jun_Daily_Wind <- Wind_Daily_COVID %>%
+  filter(Month == '06')
+
+# Non-parametric kruskal-wallis tests for each month
+Jan_wdsp.w <- kruskal.test(wdsp ~ Year, data = Jan_Daily_Wind)
+Jan_wdsp.w
+Feb_wdsp.w <- kruskal.test(wdsp ~ Year, data = Feb_Daily_Wind)
+Feb_wdsp.w
+Mar_wdsp.w <- kruskal.test(wdsp ~ Year, data = Mar_Daily_Wind)
+Mar_wdsp.w
+Apr_wdsp.w <- kruskal.test(wdsp ~ Year, data = Apr_Daily_Wind)
+Apr_wdsp.w
+May_wdsp.w <- kruskal.test(wdsp ~ Year, data = May_Daily_Wind)
+May_wdsp.w
+Jun_wdsp.w <- kruskal.test(wdsp ~ Year, data = Jun_Daily_Wind)
+Jun_wdsp.w
+```
+
+
+The result of the analyses indicate that the month of May does not significantly differ in average hourly precipitation or average hourly wind speeds across the years 2017 2020. 

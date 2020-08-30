@@ -1,0 +1,621 @@
+---
+title: "May NO2 Data Analysis - Panels by Station"
+author: "Henry Perillo"
+date: "6/23/2020"
+output: html_document
+---
+
+This markdown file details the in-depth analysis of the air quality data for Rathmines monitoring station (classification = urban) duing the COVID-19 lockdown to draw conclusions about air quality change in the surrounding area during the pandemic.
+
+# Data Input 
+
+First, library the necessary packages:
+```{r message = FALSE, warning = FALSE}
+# Clear working environment
+rm(list = ls())
+
+# Load Packages
+library(dplyr)
+library(plyr)
+library(readr)
+library(Hmisc)
+library(psych)
+library(rmweather)
+library(ranger)
+library(hexbin)
+library(tidyr)
+library(stringr)
+library(ggplot2)
+library(data.table)
+library(lubridate)
+library(Rmisc)
+library(knitr)
+```
+
+Call file:
+```{r message = FALSE, warning = FALSE}
+# Set working directory
+setwd("~/Desktop/Research_Project/Data/AQ/Final_Data")
+
+# Load data from master file
+no2 <- read_csv('NO2.csv')
+```
+
+Edit dataframe: 
+```{r message = FALSE, warning = FALSE}
+# We're left with a dataframe containing hourly NO2 values for
+# every day of 2018. Now, let's isolate the columns of interest.
+no2 <- no2[,-3]
+NO2 <- no2 %>%
+  dplyr::rename(`Rathmines (U-B)` = `Rathmines`,
+         `Winetavern Street (U-B)` = `Winetavern Street`,
+         `Dun Laoghaire (S-B)` = `Dun Laoghaire`)
+NO2 <- NO2 %>%
+		gather("Rathmines (U-B)", "Winetavern Street (U-B)", "Dun Laoghaire (S-B)", key = 'Station', value = 'value')
+
+# We can now convert the date and time column to a timestamp 
+# format so we can use it with the rmweather package. Also, 
+# we'll create year, day, hour, and month columns to house 
+# that data individually should we choose to break up the 
+# master dataframe later. 
+NO2$date <- dmy_hm(NO2$date)
+
+# Create Year, Month, Date, and Hour columns.
+NO2 <- NO2 %>%
+  mutate(Year = str_sub(date,3,4),
+         Month = str_sub(date,6,7),
+         Date = str_sub(date,9,10),
+         Hour = str_sub (date, 12, 13))
+
+# We'll make all of our data numerical:
+NO2 <- NO2 %>%
+  mutate(value = as.numeric(value))
+```
+
+The result is a cleaner dataframe that holds hourly meteorlogical and air quality data at three monitoring stations in the GDA from 2017 to 2020. 
+
+Create linear dataframe: 
+```{r message = FALSE, warning = FALSE}
+# Use rmweather to create a dataframe with 'weekday' column
+NO2 <- NO2 %>% 
+  rmw_prepare_data(na.rm = TRUE)
+
+# Remove negative values
+NO2 <- NO2 %>%
+  filter(value >= 0)
+
+# Make 'Month' data numerical
+NO2$Month <- as.numeric(NO2$Month)
+
+# Filter months
+COVID_Linear <- NO2%>%
+  filter(Month < 7)
+
+# Create new dataframe with summary values for each variable
+COVID_Linear_Daily <- summarySE(COVID_Linear, measurevar= "value", groupvars=c('Station', "Month", "Year", 'Date'))
+
+# Add an ID column for weeks to enable gtrouping later
+COVID_Linear_Daily <- COVID_Linear_Daily %>%
+  mutate(Week = case_when(
+    Date >= '01' & Date <= '07' ~ 1,
+    Date >= '08' & Date <= '14' ~ 2,
+    Date >= '15' & Date <= '21'  ~ 3,
+    Date >= '22' & Date <= '31' ~ 4))
+```
+
+Examine monthly averages: 
+```{r message = FALSE, warning = FALSE}
+# Create monthly summary dataframe
+Monthly_Avgs_NO2 <- summarySE(COVID_Linear_Daily, measurevar= "value", groupvars=c('Station', "Month", "Year"))
+
+# Make month column numerical
+Monthly_Avgs_NO2$Month <- as.numeric(Monthly_Avgs_NO2$Month)
+
+# Isolate May
+May_Monthly_Avgs_NO2 <- Monthly_Avgs_NO2 %>%
+  filter(Month == 5)
+```
+
+Check the residuals for normality:
+```{r message = FALSE, warning = FALSE}
+# Create the residuals dataframe:
+no2$date <- dmy_hm(no2$date)
+
+# We'll make all of our data numerical:
+no2 <- no2 %>%
+  mutate(Rathmines = as.numeric(Rathmines),
+         `Dun Laoghaire` = as.numeric(`Dun Laoghaire`),
+         `Winetavern Street` = as.numeric(`Winetavern Street`))
+
+# Remove NA values
+no2 <- no2[!is.na(no2$Rathmines), ]
+no2 <- no2[!is.na(no2$`Winetavern Street`), ]
+no2 <- no2[!is.na(no2$`Dun Laoghaire`), ]
+
+# Remove negative values
+no2 <- no2 %>%
+  filter(Rathmines >= 0,
+         `Winetavern Street` >= 0,
+         `Dun Laoghaire` >= 0)
+
+# Create Year, Month, Date, and Hour columns.
+no2 <- no2 %>%
+  mutate(Year = str_sub(date,3,4),
+         Month = str_sub(date,6,7),
+         Date = str_sub(date,9,10),
+         Hour = str_sub (date, 12, 13))
+
+May_NO2 <- no2 %>%
+  filter(Month == '05')
+```
+
+Residuals for Rathmines:
+```{r}
+# Build the linear model
+May_Rath_NO2.lm <- lm(Rathmines ~ Year, data = May_NO2)
+
+# Create a QQ plot of residuals
+qqnorm(residuals(May_Rath_NO2.lm))
+qqline(residuals(May_Rath_NO2.lm), col = "red")
+
+# Shapiro-wilk test
+shapiro.test(residuals(May_Rath_NO2.lm))
+```
+
+Residuals for Winetavern Street
+```{r message = FALSE, warning = FALSE}
+# Build the linear model
+May_Wine_NO2.lm <- lm(`Winetavern Street` ~ Year, data = May_NO2)
+
+# Create a QQ plot of residuals
+qqnorm(residuals(May_Wine_NO2.lm))
+qqline(residuals(May_Wine_NO2.lm), col = "red")
+
+# Shapiro-wilk test
+shapiro.test(residuals(May_Wine_NO2.lm))
+```
+
+Residuals for Dun Laoghaire
+```{r message = FALSE, warning = FALSE}
+# Build the linear model
+May_Dun_NO2.lm <- lm(`Dun Laoghaire` ~ Year, data = May_NO2)
+
+# Create a QQ plot of residuals
+qqnorm(residuals(May_Dun_NO2.lm))
+qqline(residuals(May_Dun_NO2.lm), col = "red")
+
+# Shapiro-wilk test
+shapiro.test(residuals(May_Dun_NO2.lm))
+```
+
+## Monthly
+
+May monthly multiplot:
+```{r message = FALSE, warning = FALSE}
+# Barplot
+May_Monthly_NO2_plot <- ggplot(May_Monthly_Avgs_NO2, aes(x=Year, y=value)) + 
+  geom_point(stat="identity",
+             size=1) +      # Thinner lines
+  geom_errorbar(aes(ymin=value-se, ymax=value+se),
+                size=.3,    # Thinner lines
+                width=.2,
+                position=position_dodge(.9)) +
+  labs(x = 'Year',
+       y = 'Monthly Avg [NO2] µg/m^3',
+       color = "Year",
+       title = "NO2 BAU Averages vs. COVID Average",
+       subtitle = "May") + 
+  theme_bw()+
+  facet_wrap(~ Station, dir = 'v')+
+  theme(
+    strip.text.x = element_text(margin = margin(2, 0, 2, 0), size = 12))
+May_Monthly_NO2_plot
+```
+
+Create separate dataframes for each monitoring station: 
+```{r message = FALSE, warning = FALSE}
+# Dataframe by station
+Rath_Monthly_Avgs_May_NO2 <- COVID_Linear_Daily %>%
+  filter(Station == "Rathmines (U-B)",
+         Month == 5)
+Dun_Monthly_Avgs_May_NO2 <- COVID_Linear_Daily %>%
+  filter(Station == "Dun Laoghaire (S-B)",
+         Month == 5)
+Wine_Monthly_Avgs_May_NO2 <- COVID_Linear_Daily %>%
+  filter(Station == "Winetavern Street (U-B)",
+         Month == 5)
+
+# Kruskall-wallis test for Rathmines
+May_Rath.w <- kruskal.test(value ~ Year, data = Rath_Monthly_Avgs_May_NO2)
+pairwise.wilcox.test(Rath_Monthly_Avgs_May_NO2$value, Rath_Monthly_Avgs_May_NO2$Year,
+                 p.adjust.method = "BH")
+
+# Kruskall-wallis test for Winetavern Street
+May_Wine.w <- kruskal.test(value ~ Year, data = Wine_Monthly_Avgs_May_NO2)
+pairwise.wilcox.test(Wine_Monthly_Avgs_May_NO2$value, Wine_Monthly_Avgs_May_NO2$Year,
+                 p.adjust.method = "BH")
+
+# Kruskall-wallis test for Dun laoghaire
+May_Dun.w <- kruskal.test(value ~ Year, data = Dun_Monthly_Avgs_May_NO2)
+pairwise.wilcox.test(Dun_Monthly_Avgs_May_NO2$value, Dun_Monthly_Avgs_May_NO2$Year,
+                 p.adjust.method = "BH")
+```
+
+## Weekly
+
+Weekly dataframe:
+```{r message = FALSE, warning = FALSE}
+# Summary dataframe
+Weekly_Avgs_NO2 <- summarySE(COVID_Linear_Daily, measurevar= "value", groupvars=c('Station', "Month", "Week", "Year"))
+
+# Make the 'Week' column numerical
+Weekly_Avgs_NO2$Week <- as.numeric(Weekly_Avgs_NO2$Week)
+
+# Filter by month
+May_Weekly_Avgs_NO2 <- Weekly_Avgs_NO2 %>%
+  filter(Month == 5)
+```
+
+May weekly multiplot:
+```{r message = FALSE, warning = FALSE}
+# Line plot for weeks
+May_Weekly_NO2_plot <- ggplot(data = May_Weekly_Avgs_NO2, aes(x = Week, y = value)) +
+  geom_line(aes(color = Year)) + 
+  geom_errorbar(aes(ymin=value-se, ymax=value+se, color = Year),
+                size=.3,    # Thinner lines
+                width=.2) +
+  labs(x = 'Week',
+       y = 'Weekly Avg [NO2] µg/m^3',
+       color = "Year",
+       title = "Weekly NO2 Patterns",
+       subtitle = "May")+
+  facet_wrap(~ Station, dir = 'v')+
+  theme_bw()+
+  theme(
+    strip.text.x = element_text(margin = margin(2, 0, 2, 0))
+  )
+May_Weekly_NO2_plot
+```
+
+## Daily
+
+Daily averages: 
+```{r message = FALSE, warning = FALSE}
+# Filter by month
+May_Daily_Avgs_NO2 <- COVID_Linear_Daily %>%
+  filter(Month == 5)
+
+# Make 'Date' column numeric
+May_Daily_Avgs_NO2$Date <- as.numeric(May_Daily_Avgs_NO2$Date)
+```
+
+Daily multiplot:
+```{r message = FALSE, warning = FALSE}
+# Line plot for days
+May_Daily_NO2_plot <- ggplot(data = May_Daily_Avgs_NO2, aes(x = Date, y = value)) +
+  geom_line(aes(color = Year)) + 
+  geom_errorbar(aes(ymin=value-se, ymax=value+se, color = Year),
+                size=.3,    # Thinner lines
+                width=.2)+
+  labs(x = 'Date',
+       y = 'Daily Avg [NO2] µg/m^3',
+       color = "Year",
+       title = "Daily NO2 Patterns",
+       subtitle = "May")+
+  facet_wrap(~ Station, dir = 'v')+
+  theme_bw()+
+  theme(
+    strip.text.x = element_text(margin = margin(2, 0, 2, 0))
+  )
+May_Daily_NO2_plot
+```
+
+## Diurnal Analysis
+
+Diurnal weekday analysis:
+```{r message = FALSE, warning = FALSE}
+# Create weekday dataframe
+COVID_Linear_weekday <- COVID_Linear %>%
+  filter(weekday >= 1,
+         weekday < 6)
+
+# Remove NA values
+COVID_Linear_weekday <- COVID_Linear_weekday[!is.na(COVID_Linear_weekday$value), ]
+
+# Remove negative values
+COVID_Linear_weekday <- COVID_Linear_weekday %>%
+  filter(value >= 0)
+
+# Make 'Year' column a factor
+COVID_Linear_weekday$Year <- as.factor(COVID_Linear_weekday$Year)
+
+# Create the two-year average values to compare to the COVID experimental period value. 
+COVID_Linear_weekday <- COVID_Linear_weekday %>%
+  mutate(Period = case_when(
+    Year == '19'| Year =='18' | Year == '17' ~ '2017-2019',
+    Year == '20' ~ '2020'))
+```
+
+Diurnal weekday averages by year:
+```{r message = FALSE, warning = FALSE}
+# Weekday summary dataframe
+Weekday_Diurnal_Avgs_NO2 <- summarySE(COVID_Linear_weekday, measurevar= "value", groupvars=c('Station', "Year", "Month", "Hour" ))
+
+# Make 'Year' column a factor
+Weekday_Diurnal_Avgs_NO2$Year <- as.factor(Weekday_Diurnal_Avgs_NO2$Year)
+
+# Isolate May
+May_weekday_Diurnal_Avgs_NO2 <- Weekday_Diurnal_Avgs_NO2 %>%
+  filter(Month == 5)
+```
+
+Diurnal May multiplot weekday:
+```{r message = FALSE, warning = FALSE}
+# Create separate dataframes for each year
+May_weekday_Diurnal_Avgs_NO2_17 <- May_weekday_Diurnal_Avgs_NO2 %>%
+  filter(Year == '17')
+May_weekday_Diurnal_Avgs_NO2_18 <- May_weekday_Diurnal_Avgs_NO2 %>%
+  filter(Year == '18')
+May_weekday_Diurnal_Avgs_NO2_19 <- May_weekday_Diurnal_Avgs_NO2 %>%
+  filter(Year == '19')
+May_weekday_Diurnal_Avgs_NO2_20 <- May_weekday_Diurnal_Avgs_NO2 %>%
+  filter(Year == '20')
+
+# Merge dataframes together
+May_weekday_Diurnal_Avgs_NO2_17_20 <- cbind(May_weekday_Diurnal_Avgs_NO2_17, May_weekday_Diurnal_Avgs_NO2_18, May_weekday_Diurnal_Avgs_NO2_19,May_weekday_Diurnal_Avgs_NO2_20)
+May_weekday_Diurnal_Avgs_NO2_17_20 <- May_weekday_Diurnal_Avgs_NO2_17_20[,-c(10:14, 19:23, 28:32)]
+
+# Calculate avg hourly differences
+Hryl_diff_NO2_17_20_indiv <- May_weekday_Diurnal_Avgs_NO2_17_20 %>%
+  mutate(hrly_diff_1 = value-value.3,
+         hrly_diff_2 = value.1-value.3, 
+         hrly_diff_3 = value.2-value.3)
+Hryl_diff_NO2_17_20_indiv_sum_1 <- summarySE(Hryl_diff_NO2_17_20_indiv, measurevar= "hrly_diff_1", groupvars=c('Station'))
+Hryl_diff_NO2_17_20_indiv_sum_2 <- summarySE(Hryl_diff_NO2_17_20_indiv, measurevar= "hrly_diff_2", groupvars=c('Station'))
+Hryl_diff_NO2_17_20_indiv_sum_3 <- summarySE(Hryl_diff_NO2_17_20_indiv, measurevar= "hrly_diff_3", groupvars=c('Station'))
+
+# Line plot of diurnal patterns by year
+May_weekday_Diurnal_NO2_plot <- ggplot(data = May_weekday_Diurnal_Avgs_NO2_17_20, aes(Hour)) +
+  geom_line(aes(y = value, group = 1, colour = "2017")) +
+  geom_line(aes(y = value.1, group = 1, colour = "2018")) +
+  geom_line(aes(y = value.2, group = 1, colour = "2019")) +
+  geom_line(aes(y = value.3, group = 1, colour = "2020")) + 
+  geom_errorbar(aes(ymin=value-se, ymax=value+se, colour = "2017"),
+                size=.3,    # Thinner lines
+                width=.2,
+                position=position_dodge(.9)) +
+  geom_errorbar(aes(ymin=value.1-se.1, ymax=value.1+se.1, colour = "2018"),
+                size=.3,    # Thinner lines
+                width=.2,
+                position=position_dodge(.9)) +
+  geom_errorbar(aes(ymin=value.2-se.2,
+                    ymax=value.2+se.2, colour = "2019"),
+                size=.3,    # Thinner lines
+                width=.2,
+                position=position_dodge(.9)) +
+  geom_errorbar(aes(ymin=value.3-se.3, ymax=value.3+se.3, colour = "2020"),
+                size=.3,    # Thinner lines
+                width=.2,
+                position=position_dodge(.9)) +
+  labs(x = 'Hour',
+       y = 'Hourly Avg [NO2] µg/m^3',
+       color = "Year",
+       title = "Weekday Diurnal NO2 Patterns",
+       subtitle = "May")+
+  facet_wrap(~ Station, dir = 'v')+
+  theme_bw()+
+  theme(
+    strip.text.x = element_text(margin = margin(2, 0, 2, 0), size = 12)
+  )
+May_weekday_Diurnal_NO2_plot
+```
+
+Diurnal weekday averages by period:
+```{r message = FALSE, warning = FALSE}
+# Weekday summary dataframe
+Weekday_period_Diurnal_Avgs_NO2 <- summarySE(COVID_Linear_weekday, measurevar= "value", groupvars=c('Station', "Period", "Month", "Hour" ))
+
+# Make 'Year' column a factor
+Weekday_period_Diurnal_Avgs_NO2$Period <- as.factor(Weekday_period_Diurnal_Avgs_NO2$Period)
+
+# Separate May
+May_Weekday_period_Diurnal_Avgs_NO2 <- Weekday_period_Diurnal_Avgs_NO2 %>%
+  filter(Month == 5)
+```
+
+Diurnal May multiplot weekday:
+```{r message = FALSE, warning = FALSE}
+# Create separate dataframes for each period
+May_Weekday_period_Diurnal_Avgs_NO2_17_19 <- May_Weekday_period_Diurnal_Avgs_NO2 %>%
+  filter(Period == '2017-2019')
+May_Weekday_period_Diurnal_Avgs_NO2_20 <- May_Weekday_period_Diurnal_Avgs_NO2 %>%
+  filter(Period == '2020')
+
+# Merge dataframes together
+May_Weekday_period_Diurnal_Avgs_NO2_17_20 <- cbind(May_Weekday_period_Diurnal_Avgs_NO2_17_19,May_Weekday_period_Diurnal_Avgs_NO2_20)
+
+May_Weekday_period_Diurnal_Avgs_NO2_17_20 <- May_Weekday_period_Diurnal_Avgs_NO2_17_20[,-c(10:14)]
+
+# Calculate avg hourly differences
+Hryl_diff_NO2_17_20 <- May_Weekday_period_Diurnal_Avgs_NO2_17_20 %>%
+  mutate(hrly_diff = value-value.1)
+Hryl_diff_NO2_17_20_sum <- summarySE(Hryl_diff_NO2_17_20, measurevar= "hrly_diff", groupvars=c('Station'))
+
+# Line plot of diurnal patterns by time period
+May_Weekday_period_Diurnal_NO2_plot <- ggplot(data = May_Weekday_period_Diurnal_Avgs_NO2_17_20, aes(Hour)) +
+  geom_line(aes(y = value, group = 1, colour = "2017-2019 Avg")) +
+  geom_line(aes(y = value.1, group = 1, colour = "2020")) +
+  geom_errorbar(aes(ymin=value-se, ymax=value+se, colour = "2017-2019 Avg"),
+                size=.3,    # Thinner lines
+                width=.2,
+                position=position_dodge(.9)) +
+  geom_errorbar(aes(ymin=value.1-se.1, ymax=value.1+se.1, colour = "2020"),
+                size=.3,    # Thinner lines
+                width=.2,
+                position=position_dodge(.9)) +
+  labs(x = 'Hour',
+       y = 'Hourly Avg [NO2] µg/m^3',
+       color = "Time Period",
+       title = "Weekday Diurnal NO2 Patterns",
+       subtitle = "May")+
+  facet_wrap(~ Station, dir = 'v')+
+  theme_bw()+
+  theme(
+    strip.text.x = element_text(margin = margin(2, 0, 2, 0), size = 12)
+  )
+May_Weekday_period_Diurnal_NO2_plot
+```
+
+Diurnal weekend dataframe:
+```{r message = FALSE, warning = FALSE}
+# Create weekend dataframe
+COVID_Linear_weekend <- COVID_Linear %>%
+  filter(weekday >= 6,
+         weekday <= 7)
+
+# Remove NA values
+COVID_Linear_weekend <- COVID_Linear_weekend[!is.na(COVID_Linear_weekend$value), ]
+
+# Remove negative values
+COVID_Linear_weekend <- COVID_Linear_weekend %>%
+  filter(value >= 0)
+
+COVID_Linear_weekend$Year <- as.factor(COVID_Linear_weekend$Year)
+
+# Create the two-year average values to compare to the COVID experimental period value. 
+COVID_Linear_weekend <- COVID_Linear_weekend %>%
+  mutate(Period = case_when(
+    Year == '19'| Year =='18' | Year == '17' ~ '2017-2019',
+    Year == '20' ~ '2020'))
+```
+
+Diurnal weekend Averages
+```{r message = FALSE, warning = FALSE}
+# Create summary dataframe
+weekend_Diurnal_Avgs_NO2 <- summarySE(COVID_Linear_weekend, measurevar= "value", groupvars=c('Station', "Year", "Month", "Hour" ))
+
+# Make 'Year' column a factor
+weekend_Diurnal_Avgs_NO2$Year <- as.factor(weekend_Diurnal_Avgs_NO2$Year)
+
+# Separate May
+May_weekend_Diurnal_Avgs_NO2 <- weekend_Diurnal_Avgs_NO2 %>%
+  filter(Month == 5)
+```
+
+Diurnal May multiplot weekend:
+```{r message = FALSE, warning = FALSE}
+# Create separate dataframes for each year
+May_weekend_Diurnal_Avgs_NO2_17 <- May_weekend_Diurnal_Avgs_NO2 %>%
+  filter(Year == '17')
+May_weekend_Diurnal_Avgs_NO2_18 <- May_weekend_Diurnal_Avgs_NO2 %>%
+  filter(Year == '18')
+May_weekend_Diurnal_Avgs_NO2_19 <- May_weekend_Diurnal_Avgs_NO2 %>%
+  filter(Year == '19')
+May_weekend_Diurnal_Avgs_NO2_20 <- May_weekend_Diurnal_Avgs_NO2 %>%
+  filter(Year == '20')
+
+# Bind dataframes together
+May_weekend_Diurnal_Avgs_NO2_17_20 <- cbind(May_weekend_Diurnal_Avgs_NO2_17, May_weekend_Diurnal_Avgs_NO2_18, May_weekend_Diurnal_Avgs_NO2_19,May_weekend_Diurnal_Avgs_NO2_20)
+
+May_weekend_Diurnal_Avgs_NO2_17_20 <- May_weekend_Diurnal_Avgs_NO2_17_20[,-c(10:14, 19:23, 28:32)]
+
+# Calculate avg hourly differences
+Hryl_diff_NO2_17_20_indiv_weekend <- May_weekend_Diurnal_Avgs_NO2_17_20 %>%
+  mutate(hrly_diff_1 = value-value.3,
+         hrly_diff_2 = value.1-value.3, 
+         hrly_diff_3 = value.2-value.3)
+Hryl_diff_NO2_17_20_indiv_weekend_sum_1 <- summarySE(Hryl_diff_NO2_17_20_indiv_weekend, measurevar= "hrly_diff_1", groupvars=c('Station'))
+Hryl_diff_NO2_17_20_indiv_weekend_sum_2 <- summarySE(Hryl_diff_NO2_17_20_indiv_weekend, measurevar= "hrly_diff_2", groupvars=c('Station'))
+Hryl_diff_NO2_17_20_indiv_weekend_sum_3 <- summarySE(Hryl_diff_NO2_17_20_indiv_weekend, measurevar= "hrly_diff_3", groupvars=c('Station'))
+
+# Line plot of weekend averages
+May_weekend_Diurnal_NO2_plot <- ggplot(data = May_weekend_Diurnal_Avgs_NO2_17_20, aes(Hour)) +
+  geom_line(aes(y = value, group = 1, colour = "2017")) +
+  geom_line(aes(y = value.1, group = 1, colour = "2018")) +
+  geom_line(aes(y = value.2, group = 1, colour = "2019")) +
+  geom_line(aes(y = value.3, group = 1, colour = "2020")) + 
+  geom_errorbar(aes(ymin=value-se, ymax=value+se, colour = "2017"),
+                size=.3,    # Thinner lines
+                width=.2,
+                position=position_dodge(.9)) +
+  geom_errorbar(aes(ymin=value.1-se.1, ymax=value.1+se.1, colour = "2018"),
+                size=.3,    # Thinner lines
+                width=.2,
+                position=position_dodge(.9)) +
+  geom_errorbar(aes(ymin=value.2-se.2,
+                    ymax=value.2+se.2, colour = "2019"),
+                size=.3,    # Thinner lines
+                width=.2,
+                position=position_dodge(.9)) +
+  geom_errorbar(aes(ymin=value.3-se.3, ymax=value.3+se.3, colour = "2020"),
+                size=.3,    # Thinner lines
+                width=.2,
+                position=position_dodge(.9)) +
+  labs(x = 'Hour',
+       y = 'Hourly Avg [NO2] µg/m^3',
+       color = "Year",
+       title = "Weekend Diurnal NO2 Patterns",
+       subtitle = "May")+
+  facet_wrap(~ Station, dir = 'v')+
+  theme_bw()+
+  theme(
+    strip.text.x = element_text(margin = margin(2, 0, 2, 0), size = 12)
+  )
+May_weekend_Diurnal_NO2_plot
+```
+
+Diurnal weekend averages by period: 
+```{r message = FALSE, warning = FALSE}
+# Create weekend summary dataframe by period
+weekend_period_Diurnal_Avgs_NO2 <- summarySE(COVID_Linear_weekend, measurevar= "value", groupvars=c('Station', "Period", "Month", "Hour" ))
+
+# Make 'Period' a factor
+weekend_period_Diurnal_Avgs_NO2$Period <- as.factor(weekend_period_Diurnal_Avgs_NO2$Period)
+
+# Isolate May
+May_weekend_period_Diurnal_Avgs_NO2 <- weekend_period_Diurnal_Avgs_NO2 %>%
+  filter(Month == 5)
+```
+
+Diurnal May multiplot weekend:
+```{r message=FALSE, warning=FALSE}
+# Create separate dataframes for each period
+May_weekend_period_Diurnal_Avgs_NO2_17_19 <- May_weekend_period_Diurnal_Avgs_NO2 %>%
+  filter(Period == '2017-2019')
+May_weekend_period_Diurnal_Avgs_NO2_20 <- May_weekend_period_Diurnal_Avgs_NO2 %>%
+  filter(Period == '2020')
+
+# Bind dataframes together
+May_weekend_period_Diurnal_Avgs_NO2_17_20 <- cbind(May_weekend_period_Diurnal_Avgs_NO2_17_19,May_weekend_period_Diurnal_Avgs_NO2_20)
+
+May_weekend_period_Diurnal_Avgs_NO2_17_20 <- May_weekend_period_Diurnal_Avgs_NO2_17_20[,-c(10:14)]
+
+# Calculate avg hourly differences
+Hryl_diff_NO2_17_20_weekend <- May_weekend_period_Diurnal_Avgs_NO2_17_20 %>%
+  mutate(hrly_diff = value-value.1)
+Hryl_diff_NO2_17_20_sum_weekend <- summarySE(Hryl_diff_NO2_17_20_weekend, measurevar= "hrly_diff", groupvars=c('Station'))
+
+# Create lineplot
+May_weekend_period_Diurnal_NO2_plot <- ggplot(data = May_weekend_period_Diurnal_Avgs_NO2_17_20, aes(Hour)) +
+  geom_line(aes(y = value, group = 1, colour = "2017-2019 Avg")) +
+  geom_line(aes(y = value.1, group = 1, colour = "2020")) +
+  geom_errorbar(aes(ymin=value-se, ymax=value+se, colour = "2017-2019 Avg"),
+                size=.3,    # Thinner lines
+                width=.2,
+                position=position_dodge(.9)) +
+  geom_errorbar(aes(ymin=value.1-se.1, ymax=value.1+se.1, colour = "2020"),
+                size=.3,    # Thinner lines
+                width=.2,
+                position=position_dodge(.9)) +
+  labs(x = 'Hour',
+       y = 'Hourly Avg [NO2] µg/m^3',
+       color = "Time Period",
+       title = "Weekend Diurnal NO2 Patterns",
+       subtitle = "May")+
+  facet_wrap(~ Station, dir = 'v')+
+  theme_bw()+
+  theme(
+    strip.text.x = element_text(margin = margin(2, 0, 2, 0), size = 12)
+  )
+May_weekend_period_Diurnal_NO2_plot
+```
