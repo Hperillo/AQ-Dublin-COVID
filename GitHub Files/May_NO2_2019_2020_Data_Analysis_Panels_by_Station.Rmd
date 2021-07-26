@@ -1,0 +1,247 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Data Input 
+
+First, library the necessary packages:
+```{r message = FALSE, warning = FALSE}
+# Clear working environment
+rm(list = ls())
+
+# Load Packages
+library(dplyr)
+library(plyr)
+library(readr)
+library(Hmisc)
+library(psych)
+library(rmweather)
+library(ranger)
+library(hexbin)
+library(tidyr)
+library(stringr)
+library(ggplot2)
+library(data.table)
+library(lubridate)
+library(Rmisc)
+library(knitr)
+```
+
+Call file:
+```{r message = FALSE, warning = FALSE}
+# Set working directory
+setwd("~/Documents/MSc_ES_AQ_Research_Project/Data/AQ/Final_Data")
+# Load data from master file
+no2 <- read_csv('NO2.csv')
+no2_1920 <- read_csv('NO2_1920.csv')
+```
+
+Edit dataframe: 
+```{r message = FALSE, warning = FALSE}
+# We're left with a dataframe containing hourly NO2 values for
+# every day of 2018. Now, let's isolate the columns of interest.
+no2 <- no2[,-3]
+
+no2$date <- dmy_hm(no2$date)
+
+# Create Year, Month, Date, and Hour columns.
+NO2 <- no2 %>%
+  mutate(Year = str_sub(date,3,4),
+         Month = str_sub(date,6,7),
+         Date = str_sub(date,9,10),
+         Hour = str_sub (date, 12, 13))
+
+
+NO2$Month <- as.numeric(NO2$Month)
+NO2$Year <- as.numeric(NO2$Year)
+
+#Fitler months
+NO2 <- NO2 %>%
+  filter(Year > 18,
+         Month == 5)
+
+no2_1920 <- no2_1920[-c(745,1490),]
+
+no2_1920 <- no2_1920 %>%
+  dplyr::rename(
+         `date` = `Time`)
+
+
+no2_1920$date <- dmy_hm(no2_1920$date)
+
+
+# Create Year, Month, Date, and Hour columns.
+no2_1920 <- no2_1920 %>%
+  mutate(Year = str_sub(date,3,4),
+         Month = str_sub(date,6,7),
+         Date = str_sub(date,9,10),
+         Hour = str_sub (date, 12, 13))
+
+
+no2_1920$Month <- as.numeric(no2_1920$Month)
+no2_1920$Year <- as.numeric(no2_1920$Year)
+
+NO2 <- NO2 %>%
+		inner_join(no2_1920)
+
+
+NO2 <- NO2 %>%
+  dplyr::rename(`Rathmines (U-B)` = `Rathmines`,
+         `Winetavern Street (U-B)` = `Winetavern Street`,
+         `Dun Laoghaire (S-B)` = `Dun Laoghaire`,
+         `Ballyfermot (S-B)` = `Ballyfermot`,
+         `Blanchardstown (S-T)` = `Blanchardstown`,
+         `Davitt Road (S-T)` = `Davitt Road`,
+         `St John's Road (U-T)` = `St John's Road`,
+         `Swords (S-B)` = `Swords`)
+NO2 <- NO2 %>%
+		gather("Rathmines (U-B)", "Winetavern Street (U-B)", "Dun Laoghaire (S-B)", "Ballyfermot (S-B)", "Blanchardstown (S-T)", "Davitt Road (S-T)", "St John's Road (U-T)", "Swords (S-B)", key = 'Station', value = 'value')
+
+NO2$value <- as.numeric(NO2$value)
+NO2$Date <- as.numeric(NO2$Date)
+NO2$Hour <- as.numeric(NO2$Hour)
+```
+
+Create linear dataframe: 
+```{r message = FALSE, warning = FALSE}
+# Use rmweather to create a dataframe with 'weekday' column
+NO2 <- NO2 %>% 
+  rmw_prepare_data(na.rm = TRUE)
+
+# Remove negative values
+NO2 <- NO2 %>%
+  filter(value >= 0)
+
+May_Monthly_Avgs_NO2 <- summarySE(NO2, measurevar= "value", groupvars=c('Station', "Year", "Month" ))
+```
+
+
+## Diurnal Analysis
+
+Diurnal weekday analysis:
+```{r message = FALSE, warning = FALSE}
+# Create weekday dataframe
+COVID_Linear_May_weekday <- NO2 %>%
+  filter(weekday >= 1,
+         weekday < 6)
+
+# Make 'Year' column a factor
+COVID_Linear_May_weekday$Year <- as.factor(COVID_Linear_May_weekday$Year)
+
+# Create the two-year average values to compare to the COVID experimental period value. 
+COVID_Linear_May_weekday <- COVID_Linear_May_weekday %>%
+  mutate(Period = case_when(
+    Year == '19' ~ '2019',
+    Year == '20' ~ '2020'))
+```
+
+Diurnal weekday averages by year:
+```{r message = FALSE, warning = FALSE}
+# Weekday summary dataframe
+Weekday_Diurnal_Avgs_NO2 <- summarySE(COVID_Linear_May_weekday, measurevar= "value", groupvars=c('Station', "Year", "Hour" ))
+```
+
+Diurnal May multiplot weekday:
+```{r message = FALSE, warning = FALSE}
+# Create separate dataframes for each year
+May_weekday_Diurnal_Avgs_NO2_19 <- Weekday_Diurnal_Avgs_NO2 %>%
+  filter(Year == '19')
+May_weekday_Diurnal_Avgs_NO2_20 <- Weekday_Diurnal_Avgs_NO2 %>%
+  filter(Year == '20')
+
+# Merge dataframes together
+May_weekday_Diurnal_Avgs_NO2_19_20 <- cbind(May_weekday_Diurnal_Avgs_NO2_19,May_weekday_Diurnal_Avgs_NO2_20)
+May_weekday_Diurnal_Avgs_NO2_19_20 <- May_weekday_Diurnal_Avgs_NO2_19_20[,-c(9:12)]
+
+# Line plot of diurnal patterns by year
+May_weekday_Diurnal_NO2_plot <- ggplot(data = May_weekday_Diurnal_Avgs_NO2_19_20, aes(Hour)) +
+  geom_line(aes(y = value, group = 1, colour = "2019")) +
+  geom_line(aes(y = value.1, group = 1, colour = "2020")) +
+  geom_errorbar(aes(ymin=value-se, ymax=value+se, colour = "2019"),
+                size=.3,    # Thinner lines
+                width=.2,
+                position=position_dodge(.9)) +
+  geom_errorbar(aes(ymin=value.1-se.1, ymax=value.1+se.1, colour = "2020"),
+                size=.3,    # Thinner lines
+                width=.2,
+                position=position_dodge(.9)) +
+  labs(x = 'Hour',
+       y = 'Hourly Avg [NO2] µg/m^3',
+       color = "Year",
+       title = "Weekday Diurnal NO2 Patterns",
+       subtitle = "May")+
+  facet_wrap(~ Station, ncol = 2, dir = 'v')+
+  theme_bw()+
+  theme(
+    strip.text.x = element_text(margin = margin(2, 0, 2, 0), size = 15),
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 14, margin = unit(c(3, 3, 0, 0), "mm")),
+    legend.title = element_text(size = 13),
+    legend.text = element_text(size = 11),
+    legend.position='top')
+May_weekday_Diurnal_NO2_plot
+```
+
+Diurnal weekday analysis:
+```{r message = FALSE, warning = FALSE}
+# Create weekday dataframe
+COVID_Linear_May_weekend <- NO2 %>%
+  filter(weekday > 5)
+
+# Make 'Year' column a factor
+COVID_Linear_May_weekend$Year <- as.factor(COVID_Linear_May_weekend$Year)
+
+# Create the two-year average values to compare to the COVID experimental period value. 
+COVID_Linear_May_weekend <- COVID_Linear_May_weekend %>%
+  mutate(Period = case_when(
+    Year == '19' ~ '2019',
+    Year == '20' ~ '2020'))
+```
+
+Diurnal weekday averages by year:
+```{r message = FALSE, warning = FALSE}
+# Weekday summary dataframe
+Weekend_Diurnal_Avgs_NO2 <- summarySE(COVID_Linear_May_weekend, measurevar= "value", groupvars=c('Station', "Year", "Hour" ))
+```
+
+Diurnal May multiplot weekday:
+```{r message = FALSE, warning = FALSE}
+# Create separate dataframes for each year
+May_weekend_Diurnal_Avgs_NO2_19 <- Weekend_Diurnal_Avgs_NO2 %>%
+  filter(Year == '19')
+May_weekend_Diurnal_Avgs_NO2_20 <- Weekend_Diurnal_Avgs_NO2 %>%
+  filter(Year == '20')
+
+# Merge dataframes together
+May_weekend_Diurnal_Avgs_NO2_19_20 <- cbind(May_weekend_Diurnal_Avgs_NO2_19,May_weekend_Diurnal_Avgs_NO2_20)
+May_weekend_Diurnal_Avgs_NO2_19_20 <- May_weekend_Diurnal_Avgs_NO2_19_20[,-c(9:12)]
+
+# Line plot of diurnal patterns by year
+May_weekend_Diurnal_NO2_plot <- ggplot(data = May_weekend_Diurnal_Avgs_NO2_19_20, aes(Hour)) +
+  geom_line(aes(y = value, group = 1, colour = "2019")) +
+  geom_line(aes(y = value.1, group = 1, colour = "2020")) +
+  geom_errorbar(aes(ymin=value-se, ymax=value+se, colour = "2019"),
+                size=.3,    # Thinner lines
+                width=.2,
+                position=position_dodge(.9)) +
+  geom_errorbar(aes(ymin=value.1-se.1, ymax=value.1+se.1, colour = "2020"),
+                size=.3,    # Thinner lines
+                width=.2,
+                position=position_dodge(.9)) +
+  labs(x = 'Hour',
+       y = 'Hourly Avg [NO2] µg/m^3',
+       color = "Year",
+       title = "Weekend Diurnal NO2 Patterns",
+       subtitle = "May")+
+  facet_wrap(~ Station, ncol = 2, dir = 'v')+
+  theme_bw()+
+  theme(
+    strip.text.x = element_text(margin = margin(2, 0, 2, 0), size = 15),
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 14, margin = unit(c(3, 3, 0, 0), "mm")),
+    legend.title = element_text(size = 13),
+    legend.text = element_text(size = 11),
+    legend.position='top')
+May_weekend_Diurnal_NO2_plot
+```

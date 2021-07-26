@@ -1,0 +1,265 @@
+---
+title: "May PM2.5 Data Analysis - Panels by Station"
+author: "Henry Perillo"
+date: "6/23/2020"
+output: html_document
+---
+
+This markdown file details the in-depth analysis of the air quality data for PM2.5 duing the COVID-19 lockdown to draw conclusions about air quality change in the surrounding area during the pandemic.
+
+# Data Input 
+
+First, library the necessary packages:
+```{r message = FALSE, warning = FALSE}
+# Clear working environment
+rm(list = ls())
+
+# Load Packages
+library(dplyr)
+library(plyr)
+library(readr)
+library(Hmisc)
+library(psych)
+library(rmweather)
+library(ranger)
+library(hexbin)
+library(tidyr)
+library(stringr)
+library(ggplot2)
+library(data.table)
+library(lubridate)
+library(Rmisc)
+library(knitr)
+```
+
+Call file:
+```{r message = FALSE, warning = FALSE}
+# Set working directory
+setwd("~/Documents/MSc_ES_AQ_Research_Project/Data/AQ/Final_Data")
+
+# Load data from master file
+pm <- read_csv('PM1920.csv')
+pm_1920 <- read_csv('PMMay_1920.csv')
+```
+
+Edit dataframe: 
+```{r message = FALSE, warning = FALSE}
+# We're left with a dataframe containing hourly PM values for
+# every day of 2018. Now, let's isolate the columns of interest.
+
+pm$date <- dmy_hm(pm$date)
+
+# Create Year, Month, Date, and Hour columns.
+PM <- pm %>%
+  mutate(Year = str_sub(date,3,4),
+         Month = str_sub(date,6,7),
+         Date = str_sub(date,9,10),
+         Hour = str_sub (date, 12, 13))
+
+
+PM$Month <- as.numeric(PM$Month)
+PM$Year <- as.numeric(PM$Year)
+
+#Fitler months
+PM <- PM %>%
+  filter(Year > 18,
+         Month == 5)
+
+pm_1920 <- pm_1920[-c(745,1490),]
+
+pm_1920 <- pm_1920 %>%
+  dplyr::rename(
+    `date` = `Time`)
+
+
+pm_1920$date <- dmy_hm(pm_1920$date)
+
+
+# Create Year, Month, Date, and Hour columns.
+pm_1920 <- pm_1920 %>%
+  mutate(Year = str_sub(date,3,4),
+         Month = str_sub(date,6,7),
+         Date = str_sub(date,9,10),
+         Hour = str_sub (date, 12, 13))
+
+
+pm_1920$Month <- as.numeric(pm_1920$Month)
+pm_1920$Year <- as.numeric(pm_1920$Year)
+
+PM <- PM %>%
+  inner_join(pm_1920)
+
+
+PM <- PM %>%
+  dplyr::rename(`Rathmines (U-B)` = `Rathmines`,
+                `Finglas (S-B)` = `Finglas`,
+                `Marino (S-B)` = `Marino`,
+                `Ringsend (U-T)` = `Ringsend`,
+                `Ballyfermot (S-B)` = `Ballyfermot`,
+                `Davitt Road (S-T)` = `Davitt Road`,
+                `St Anne's Park (S-B)` = `St Annes`,
+                `St John's Road (U-T)` = `St John's Road`,
+                `Phoenix Park (S-B)` = `Phoenix Park`)
+PM <- PM %>%
+  gather("Rathmines (U-B)",
+         "Finglas (S-B)",
+         "Marino (S-B)",
+         "Ringsend (U-T)",
+         "Ballyfermot (S-B)",
+         "Davitt Road (S-T)",
+         "St Anne's Park (S-B)",
+         "St John's Road (U-T)",
+         "Phoenix Park (S-B)", key = 'Station', value = 'value')
+
+PM$value <- as.numeric(PM$value)
+PM$Date <- as.numeric(PM$Date)
+PM$Hour <- as.numeric(PM$Hour)
+
+```
+
+Create linear dataframe: 
+```{r message = FALSE, warning = FALSE}
+# Use rmweather to create a dataframe with 'weekday' column
+PM <- PM %>% 
+  rmw_prepare_data(na.rm = TRUE)
+
+# Remove negative values
+PM <- PM %>%
+  filter(value >= 0)
+
+Monthy_Diurnal_Avgs_PM <- summarySE(PM, measurevar= "value", groupvars=c('Station', "Year", "Month" ))
+```
+
+
+## Diurnal Analysis
+
+Diurnal weekday analysis:
+```{r message = FALSE, warning = FALSE}
+# Create weekday dataframe
+COVID_Linear_May_weekday <- PM %>%
+  filter(weekday >= 1,
+         weekday < 6)
+
+# Make 'Year' column a factor
+COVID_Linear_May_weekday$Year <- as.factor(COVID_Linear_May_weekday$Year)
+
+# Create the two-year average values to compare to the COVID experimental period value. 
+COVID_Linear_May_weekday <- COVID_Linear_May_weekday %>%
+  mutate(Period = case_when(
+    Year == '19' ~ '2019',
+    Year == '20' ~ '2020'))
+```
+
+Diurnal weekday averages by year:
+```{r}
+# Weekday summary dataframe
+Weekday_Diurnal_Avgs_PM <- summarySE(COVID_Linear_May_weekday, measurevar= "value", groupvars=c('Station', "Year", "Hour" ))
+
+kable(Weekday_Diurnal_Avgs_PM)
+```
+
+Diurnal May multiplot weekday:
+```{r message = FALSE, warning = FALSE}
+# Create separate dataframes for each year
+May_weekday_Diurnal_Avgs_PM_19 <- Weekday_Diurnal_Avgs_PM %>%
+  filter(Year == '19')
+May_weekday_Diurnal_Avgs_PM_20 <- Weekday_Diurnal_Avgs_PM %>%
+  filter(Year == '20')
+
+# Merge dataframes together
+May_weekday_Diurnal_Avgs_PM_19_20 <- cbind(May_weekday_Diurnal_Avgs_PM_19,May_weekday_Diurnal_Avgs_PM_20)
+May_weekday_Diurnal_Avgs_PM_19_20 <- May_weekday_Diurnal_Avgs_PM_19_20[,-c(9:12)]
+
+# Line plot of diurnal patterns by year
+May_weekday_Diurnal_PM_plot <- ggplot(data = May_weekday_Diurnal_Avgs_PM_19_20, aes(Hour)) +
+  geom_line(aes(y = value, group = 1, colour = "2019")) +
+  geom_line(aes(y = value.1, group = 1, colour = "2020")) +
+  geom_errorbar(aes(ymin=value-se, ymax=value+se, colour = "2019"),
+                size=.3,    # Thinner lines
+                width=.2,
+                position=position_dodge(.9)) +
+  geom_errorbar(aes(ymin=value.1-se.1, ymax=value.1+se.1, colour = "2020"),
+                size=.3,    # Thinner lines
+                width=.2,
+                position=position_dodge(.9)) +
+  labs(x = 'Hour',
+       y = 'Hourly Avg [PM] µg/m^3',
+       color = "Year",
+       title = "Weekday Diurnal PM Patterns",
+       subtitle = "May")+
+  facet_wrap(~ Station, ncol = 3, dir = 'v')+
+  theme_bw()+
+  theme(
+    strip.text.x = element_text(margin = margin(2, 0, 2, 0), size = 15),
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 14, margin = unit(c(3, 3, 0, 0), "mm")),
+    legend.title = element_text(size = 13),
+    legend.text = element_text(size = 11),
+    legend.position='top')
+May_weekday_Diurnal_PM_plot
+```
+
+Diurnal weekday analysis:
+```{r message = FALSE, warning = FALSE}
+# Create weekday dataframe
+COVID_Linear_May_weekend <- PM %>%
+  filter(weekday > 5)
+
+# Make 'Year' column a factor
+COVID_Linear_May_weekend$Year <- as.factor(COVID_Linear_May_weekend$Year)
+
+# Create the two-year average values to compare to the COVID experimental period value. 
+COVID_Linear_May_weekend <- COVID_Linear_May_weekend %>%
+  mutate(Period = case_when(
+    Year == '19' ~ '2019',
+    Year == '20' ~ '2020'))
+```
+
+Diurnal weekday averages by year:
+```{r}
+# Weekday summary dataframe
+Weekend_Diurnal_Avgs_PM <- summarySE(COVID_Linear_May_weekend, measurevar= "value", groupvars=c('Station', "Year", "Hour" ))
+
+kable(Weekend_Diurnal_Avgs_PM)
+```
+
+Diurnal May multiplot weekday:
+```{r message = FALSE, warning = FALSE}
+# Create separate dataframes for each year
+May_weekend_Diurnal_Avgs_PM_19 <- Weekend_Diurnal_Avgs_PM %>%
+  filter(Year == '19')
+May_weekend_Diurnal_Avgs_PM_20 <- Weekend_Diurnal_Avgs_PM %>%
+  filter(Year == '20')
+
+# Merge dataframes together
+May_weekend_Diurnal_Avgs_PM_19_20 <- cbind(May_weekend_Diurnal_Avgs_PM_19,May_weekend_Diurnal_Avgs_PM_20)
+May_weekend_Diurnal_Avgs_PM_19_20 <- May_weekend_Diurnal_Avgs_PM_19_20[,-c(9:12)]
+
+# Line plot of diurnal patterns by year
+May_weekend_Diurnal_PM_plot <- ggplot(data = May_weekend_Diurnal_Avgs_PM_19_20, aes(Hour)) +
+  geom_line(aes(y = value, group = 1, colour = "2019")) +
+  geom_line(aes(y = value.1, group = 1, colour = "2020")) +
+  geom_errorbar(aes(ymin=value-se, ymax=value+se, colour = "2019"),
+                size=.3,    # Thinner lines
+                width=.2,
+                position=position_dodge(.9)) +
+  geom_errorbar(aes(ymin=value.1-se.1, ymax=value.1+se.1, colour = "2020"),
+                size=.3,    # Thinner lines
+                width=.2,
+                position=position_dodge(.9)) +
+  labs(x = 'Hour',
+       y = 'Hourly Avg [PM] µg/m^3',
+       color = "Year",
+       title = "Weekend Diurnal PM Patterns",
+       subtitle = "May")+
+  facet_wrap(~ Station, ncol = 3, dir = 'v')+
+  theme_bw()+
+  theme(
+    strip.text.x = element_text(margin = margin(2, 0, 2, 0), size = 15),
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 14, margin = unit(c(3, 3, 0, 0), "mm")),
+    legend.title = element_text(size = 13),
+    legend.text = element_text(size = 11),
+    legend.position='top')
+May_weekend_Diurnal_PM_plot
+```
