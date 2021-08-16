@@ -1,5 +1,5 @@
 ---
-title: "May PM2.5 Data Analysis - Panels by Station"
+title: "PM2.5 Analysis for May 2019-2020 BAU v.s. COVID"
 author: "Henry Perillo"
 date: "6/23/2020"
 output: html_document
@@ -11,10 +11,10 @@ This markdown file details the in-depth analysis of the air quality data for PM2
 
 First, library the necessary packages:
 ```{r message = FALSE, warning = FALSE}
-# Clear working environment
+# Clear working environment.
 rm(list = ls())
 
-# Load Packages
+# Load Packages.
 library(dplyr)
 library(plyr)
 library(readr)
@@ -34,19 +34,20 @@ library(knitr)
 
 Call file:
 ```{r message = FALSE, warning = FALSE}
-# Set working directory
+# Set working directory.
 setwd("~/Documents/MSc_ES_AQ_Research_Project/Data/AQ/Final_Data")
 
-# Load data from master file
+# Load data from master files. Since the relevant data 
+# was sent in two separate files, we will need to join 
+# them togehter for analysis. 
 pm <- read_csv('PM1920.csv')
 pm_1920 <- read_csv('PMMay_1920.csv')
 ```
 
 Edit dataframe: 
 ```{r message = FALSE, warning = FALSE}
-# We're left with a dataframe containing hourly PM values for
-# every day of 2018. Now, let's isolate the columns of interest.
-
+# We're left with dataframes containing hourly PM values.
+# Re-format the 'date' column. 
 pm$date <- dmy_hm(pm$date)
 
 # Create Year, Month, Date, and Hour columns.
@@ -56,24 +57,26 @@ PM <- pm %>%
          Date = str_sub(date,9,10),
          Hour = str_sub (date, 12, 13))
 
-
+# Make 'Month' and 'Year' columns numeric.
 PM$Month <- as.numeric(PM$Month)
 PM$Year <- as.numeric(PM$Year)
 
-#Fitler months
+#Fitler months and years. 
 PM <- PM %>%
   filter(Year > 18,
          Month == 5)
 
+# Remove values in 2020 that do not allow for 
+# table joining.
 pm_1920 <- pm_1920[-c(745,1490),]
 
+# Rename the 'date' column. 
 pm_1920 <- pm_1920 %>%
   dplyr::rename(
     `date` = `Time`)
 
-
+# Reformat the 'date' column.
 pm_1920$date <- dmy_hm(pm_1920$date)
-
 
 # Create Year, Month, Date, and Hour columns.
 pm_1920 <- pm_1920 %>%
@@ -82,14 +85,15 @@ pm_1920 <- pm_1920 %>%
          Date = str_sub(date,9,10),
          Hour = str_sub (date, 12, 13))
 
-
+# Make columns numeric.
 pm_1920$Month <- as.numeric(pm_1920$Month)
 pm_1920$Year <- as.numeric(pm_1920$Year)
 
+# Join tables to make the master PM table. 
 PM <- PM %>%
   inner_join(pm_1920)
 
-
+# Re-format the dataframe to make it more conductive to vizualisation and stats. 
 PM <- PM %>%
   dplyr::rename(`Rathmines (U-B)` = `Rathmines`,
                 `Finglas (S-B)` = `Finglas`,
@@ -111,6 +115,7 @@ PM <- PM %>%
          "St John's Road (U-T)",
          "Phoenix Park (S-B)", key = 'Station', value = 'value')
 
+# Make numeric columns. 
 PM$value <- as.numeric(PM$value)
 PM$Date <- as.numeric(PM$Date)
 PM$Hour <- as.numeric(PM$Hour)
@@ -119,11 +124,12 @@ PM$Hour <- as.numeric(PM$Hour)
 
 Create linear dataframe: 
 ```{r message = FALSE, warning = FALSE}
-# Use rmweather to create a dataframe with 'weekday' column
+# Use rmweather to create a dataframe with 'weekday' column.
+# Also removes 'Na' values. 
 PM <- PM %>% 
   rmw_prepare_data(na.rm = TRUE)
 
-# Remove negative values
+# Remove negative values.
 PM <- PM %>%
   filter(value >= 0)
 
@@ -135,15 +141,16 @@ Monthy_Diurnal_Avgs_PM <- summarySE(PM, measurevar= "value", groupvars=c('Statio
 
 Diurnal weekday analysis:
 ```{r message = FALSE, warning = FALSE}
-# Create weekday dataframe
+# Create weekday dataframe.
 COVID_Linear_May_weekday <- PM %>%
   filter(weekday >= 1,
          weekday < 6)
 
-# Make 'Year' column a factor
+# Make 'Year' column a factor.
 COVID_Linear_May_weekday$Year <- as.factor(COVID_Linear_May_weekday$Year)
 
-# Create the two-year average values to compare to the COVID experimental period value. 
+# Create the two-year average values to compare
+# to the COVID experimental period value. 
 COVID_Linear_May_weekday <- COVID_Linear_May_weekday %>%
   mutate(Period = case_when(
     Year == '19' ~ '2019',
@@ -152,7 +159,7 @@ COVID_Linear_May_weekday <- COVID_Linear_May_weekday %>%
 
 Diurnal weekday averages by year:
 ```{r}
-# Weekday summary dataframe
+# Weekday summary dataframe.
 Weekday_Diurnal_Avgs_PM <- summarySE(COVID_Linear_May_weekday, measurevar= "value", groupvars=c('Station', "Year", "Hour" ))
 
 kable(Weekday_Diurnal_Avgs_PM)
@@ -160,17 +167,17 @@ kable(Weekday_Diurnal_Avgs_PM)
 
 Diurnal May multiplot weekday:
 ```{r message = FALSE, warning = FALSE}
-# Create separate dataframes for each year
+# Create separate dataframes for each year.
 May_weekday_Diurnal_Avgs_PM_19 <- Weekday_Diurnal_Avgs_PM %>%
   filter(Year == '19')
 May_weekday_Diurnal_Avgs_PM_20 <- Weekday_Diurnal_Avgs_PM %>%
   filter(Year == '20')
 
-# Merge dataframes together
+# Merge dataframes together.
 May_weekday_Diurnal_Avgs_PM_19_20 <- cbind(May_weekday_Diurnal_Avgs_PM_19,May_weekday_Diurnal_Avgs_PM_20)
 May_weekday_Diurnal_Avgs_PM_19_20 <- May_weekday_Diurnal_Avgs_PM_19_20[,-c(9:12)]
 
-# Line plot of diurnal patterns by year
+# Line plot of diurnal patterns by year.
 May_weekday_Diurnal_PM_plot <- ggplot(data = May_weekday_Diurnal_Avgs_PM_19_20, aes(Hour)) +
   geom_line(aes(y = value, group = 1, colour = "2019")) +
   geom_line(aes(y = value.1, group = 1, colour = "2020")) +
@@ -199,43 +206,44 @@ May_weekday_Diurnal_PM_plot <- ggplot(data = May_weekday_Diurnal_Avgs_PM_19_20, 
 May_weekday_Diurnal_PM_plot
 ```
 
-Diurnal weekday analysis:
+Diurnal weekend analysis:
 ```{r message = FALSE, warning = FALSE}
-# Create weekday dataframe
+# Create weekend dataframe.
 COVID_Linear_May_weekend <- PM %>%
   filter(weekday > 5)
 
-# Make 'Year' column a factor
+# Make 'Year' column a factor.
 COVID_Linear_May_weekend$Year <- as.factor(COVID_Linear_May_weekend$Year)
 
-# Create the two-year average values to compare to the COVID experimental period value. 
+# Create the two-year average values to compare 
+# to the COVID experimental period value. 
 COVID_Linear_May_weekend <- COVID_Linear_May_weekend %>%
   mutate(Period = case_when(
     Year == '19' ~ '2019',
     Year == '20' ~ '2020'))
 ```
 
-Diurnal weekday averages by year:
+Diurnal weekend averages by year:
 ```{r}
-# Weekday summary dataframe
+# Weekend summary dataframe.
 Weekend_Diurnal_Avgs_PM <- summarySE(COVID_Linear_May_weekend, measurevar= "value", groupvars=c('Station', "Year", "Hour" ))
 
 kable(Weekend_Diurnal_Avgs_PM)
 ```
 
-Diurnal May multiplot weekday:
+Diurnal May multiplot weekend:
 ```{r message = FALSE, warning = FALSE}
-# Create separate dataframes for each year
+# Create separate dataframes for each year.
 May_weekend_Diurnal_Avgs_PM_19 <- Weekend_Diurnal_Avgs_PM %>%
   filter(Year == '19')
 May_weekend_Diurnal_Avgs_PM_20 <- Weekend_Diurnal_Avgs_PM %>%
   filter(Year == '20')
 
-# Merge dataframes together
+# Merge dataframes together.
 May_weekend_Diurnal_Avgs_PM_19_20 <- cbind(May_weekend_Diurnal_Avgs_PM_19,May_weekend_Diurnal_Avgs_PM_20)
 May_weekend_Diurnal_Avgs_PM_19_20 <- May_weekend_Diurnal_Avgs_PM_19_20[,-c(9:12)]
 
-# Line plot of diurnal patterns by year
+# Line plot of diurnal patterns by year.
 May_weekend_Diurnal_PM_plot <- ggplot(data = May_weekend_Diurnal_Avgs_PM_19_20, aes(Hour)) +
   geom_line(aes(y = value, group = 1, colour = "2019")) +
   geom_line(aes(y = value.1, group = 1, colour = "2020")) +
