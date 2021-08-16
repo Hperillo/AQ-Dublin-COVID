@@ -1,5 +1,5 @@
 ---
-title: "May PM2.5 Data Analysis - Panels by Station"
+title: "PM2.5 Analysis for May 2017-2020 BAU v.s. COVID"
 author: "Henry Perillo"
 date: "6/23/2020"
 output: html_document
@@ -11,10 +11,10 @@ This markdown file details the in-depth analysis of the air quality data for PM2
 
 First, library the necessary packages:
 ```{r message = FALSE, warning = FALSE}
-# Clear working environment
+# Clear working environment.
 rm(list = ls())
 
-# Load Packages
+# Load Packages.
 library(dplyr)
 library(plyr)
 library(readr)
@@ -34,10 +34,10 @@ library(knitr)
 
 Call file:
 ```{r message = FALSE, warning = FALSE}
-# Set working directory
+# Set working directory.
 setwd("~/Documents/MSc_ES_AQ_Research_Project/Data/AQ/Final_Data")
 
-# Load data from master file
+# Load data from master files. 
 pm_1 <- read_csv('PM1718.csv')
 pm_1 <- pm_1[,-5]
 pm_2 <- read_csv('PM1920.csv')
@@ -45,7 +45,9 @@ pm_2 <- read_csv('PM1920.csv')
 
 Edit dataframe: 
 ```{r message = FALSE, warning = FALSE}
-# We're left with a dataframe containing daily PM values in PM_1 and hourly PM values in PM_2. Now, let's isolate the columns of interest.
+# We're left with a dataframe containing daily PM 
+# values in PM_1 and hourly PM values in PM_2. Now, 
+# let's isolate the columns of interest.
 PM_2 <- pm_2 %>%
   dplyr::rename(`Rathmines (U-B)` = `Rathmines`,
          `Marino (S-B)` = `Marino`,
@@ -68,13 +70,13 @@ PM_2 <- PM_2 %>%
          Date = str_sub(date,9,10),
          Hour = str_sub (date, 12, 13))
 
-# We'll make all of our data numerical:
+# We'll make all of our data numerical.
 PM_2 <- PM_2 %>%
   mutate(value = as.numeric(value))
 ```
 
-
 ```{r message = FALSE, warning = FALSE}
+# Convert relevant columns to the correct format. 
 pm_1$date <- dmy(pm_1$date)
 pm_2$date <- dmy_hm(pm_2$date)
 pm_2 <- pm_2[,-5]
@@ -90,7 +92,7 @@ pm_2 <- pm_2 %>%
          Date = str_sub(date,9,10),
          Hour = str_sub (date, 12, 13))
 
-# Make 'Month' data numerical
+# Make 'Month' data numerical.
 pm_1$Finglas <- as.numeric(pm_1$Finglas)
 pm_1$Marino <- as.numeric(pm_1$Marino)
 pm_1$Rathmines <- as.numeric(pm_1$Rathmines)
@@ -98,7 +100,7 @@ pm_2$Finglas <- as.numeric(pm_2$Finglas)
 pm_2$Marino <- as.numeric(pm_2$Marino)
 pm_2$Rathmines <- as.numeric(pm_2$Rathmines)
 
-# Remove NA values
+# Remove NA values.
 pm_1 <- pm_1[!is.na(pm_1$Rathmines), ]
 pm_1 <- pm_1[!is.na(pm_1$Finglas), ]
 pm_1 <- pm_1[!is.na(pm_1$Marino), ]
@@ -106,26 +108,30 @@ pm_2 <- pm_2[!is.na(pm_2$Rathmines), ]
 pm_2 <- pm_2[!is.na(pm_2$Finglas), ]
 pm_2 <- pm_2[!is.na(pm_2$Marino), ]
 
-# Remove negative values
+# Remove negative values.
 pm_2 <- pm_2 %>%
   filter(Rathmines >= 0,
          Finglas >= 0,
          Marino >= 0)
 
+# Create summary values.
 pm_2 <- pm_2 %>%
   group_by(Year, Month, Date) %>%
   dplyr::summarize(Finglas = mean(Finglas),
                    Marino = mean(Marino),
                    Rathmines = mean(Rathmines))
 
+# Remove extraneous columns.
 pm_1 <- pm_1[,-1]
 pm_1 <- pm_1[,c(4,5,6,1,2,3)]
 
+# Filter for May.
 pm_1 <- pm_1 %>%
   filter(Month == '05')
 pm_2 <- pm_2 %>%
   filter(Month == '05')
 
+# Joing columns. 
 PM <- dplyr::bind_rows(pm_1, pm_2)
 ```
 
@@ -147,40 +153,40 @@ Let's now check the residuals for normality.
 
 Residuals for Rathmines:
 ```{r message = FALSE, warning = FALSE} 
-# Build the linear model
+# Build the linear model.
 May_Rath_PM.lm <- lm(Rathmines ~ Year, data = PM)
 
-# Create a QQ plot of residuals
+# Create a QQ plot of residuals.
 qqnorm(residuals(May_Rath_PM.lm))
 qqline(residuals(May_Rath_PM.lm), col = "red")
 
-# Shapiro-wilk test
+# Shapiro-wilk test.
 shapiro.test(residuals(May_Rath_PM.lm))
 ```
 
 Residuals for Marino
 ```{r message = FALSE, warning = FALSE}
-# Build the linear model
+# Build the linear model.
 May_Mar_PM.lm <- lm(`Marino` ~ Year, data = PM)
 
-# Create a QQ plot of residuals
+# Create a QQ plot of residuals.
 qqnorm(residuals(May_Mar_PM.lm))
 qqline(residuals(May_Mar_PM.lm), col = "red")
 
-# Shapiro-wilk test
+# Shapiro-wilk test.
 shapiro.test(residuals(May_Mar_PM.lm))
 ```
 
 Residuals for Finglas
 ```{r message = FALSE, warning = FALSE}
-# Build the linear model
+# Build the linear model.
 May_Fin_PM.lm <- lm(`Finglas` ~ Year, data = PM)
 
-# Create a QQ plot of residuals
+# Create a QQ plot of residuals.
 qqnorm(residuals(May_Fin_PM.lm))
 qqline(residuals(May_Fin_PM.lm), col = "red")
 
-# Shapiro-wilk test
+# Shapiro-wilk test.
 shapiro.test(residuals(May_Fin_PM.lm))
 ```
 
@@ -188,7 +194,7 @@ shapiro.test(residuals(May_Fin_PM.lm))
 
 May monthly multiplot:
 ```{r message = FALSE, warning = FALSE}
-# Barplot
+# Barplot.
 May_Monthly_PM_plot <- ggplot(May_Monthly_Avgs_PM, aes(x=Year, y=value)) + 
   geom_point(stat="identity",
              size=1) +      # Thinner lines
@@ -210,7 +216,7 @@ May_Monthly_PM_plot
 
 Create separate dataframes for each monitoring station: 
 ```{r message = FALSE, warning = FALSE}
-# Dataframe by station
+# Dataframe by station.
 Rath_Monthly_Avgs_May_PM <- PM_1 %>%
   filter(Station == "Rathmines (U-B)")
 Fin_Monthly_Avgs_May_PM <- PM_1 %>%
@@ -218,255 +224,21 @@ Fin_Monthly_Avgs_May_PM <- PM_1 %>%
 Mar_Monthly_Avgs_May_PM <- PM_1 %>%
   filter(Station == "Marino (S-B)")
 
-# Kruskall-wallis test for Rathmines
+# Kruskall-wallis test for Rathmines.
 May_Rath.w <- kruskal.test(value ~ Year, data = Rath_Monthly_Avgs_May_PM)
 May_Rath.w
 pairwise.wilcox.test(Rath_Monthly_Avgs_May_PM$value, Rath_Monthly_Avgs_May_PM$Year,
                  p.adjust.method = "BH")
 
-# Kruskall-wallis test for Marino
+# Kruskall-wallis test for Marino.
 May_Mar.w <- kruskal.test(value ~ Year, data = Mar_Monthly_Avgs_May_PM)
 May_Mar.w
 pairwise.wilcox.test(Mar_Monthly_Avgs_May_PM$value, Mar_Monthly_Avgs_May_PM$Year,
                  p.adjust.method = "BH")
 
-# Kruskall-wallis test for Finglas
+# Kruskall-wallis test for Finglas.
 May_Fin.w <- kruskal.test(value ~ Year, data = Fin_Monthly_Avgs_May_PM)
 May_Fin.w
 pairwise.wilcox.test(Fin_Monthly_Avgs_May_PM$value, Fin_Monthly_Avgs_May_PM$Year,
                  p.adjust.method = "BH")
-```
-## Weekly
-
-Weekly dataframe:
-```{r message = FALSE, warning = FALSE}
-# Add an ID column for weeks to enable gtrouping later
-PM_1 <- PM_1 %>%
-  mutate(Week = case_when(
-    Date >= '01' & Date <= '07' ~ 1,
-    Date >= '08' & Date <= '14' ~ 2,
-    Date >= '15' & Date <= '21'  ~ 3,
-    Date >= '22' & Date <= '31' ~ 4))
-
-# Summary dataframe
-Weekly_Avgs_PM <- summarySE(PM_1, measurevar= "value", groupvars=c('Station', "Month", "Week", "Year"))
-
-# Make the 'Week' column numerical
-Weekly_Avgs_PM$Week <- as.numeric(Weekly_Avgs_PM$Week)
-```
-
-May weekly multiplot:
-```{r message = FALSE, warning = FALSE}
-# Line plot for weeks
-May_Weekly_PM_plot <- ggplot(data = Weekly_Avgs_PM, aes(x = Week, y = value)) +
-  geom_line(aes(color = Year)) + 
-  geom_errorbar(aes(ymin=value-se, ymax=value+se, color = Year),
-                size=.3,    # Thinner lines
-                width=.2) +
-  labs(x = 'Week',
-       y = 'Weekly Avg [PM] µg/m^3',
-       color = "Year",
-       title = "Weekly PM Patterns",
-       subtitle = "May")+
-  facet_wrap(~ Station, dir = 'v')+
-  theme_bw()+
-  theme(
-    strip.text.x = element_text(margin = margin(2, 0, 2, 0))
-  )
-May_Weekly_PM_plot
-```
-
-## Daily
-
-Daily averages: 
-```{r message = FALSE, warning = FALSE}
-# Make 'Date' column numeric
-PM_1$Date <- as.numeric(PM_1$Date)
-```
-
-Daily multiplot:
-```{r message = FALSE, warning = FALSE}
-# Line plot for days
-May_Daily_PM_plot <- ggplot(data = PM_1, aes(x = Date, y = value)) +
-  geom_line(aes(color = Year)) + 
-  labs(x = 'Date',
-       y = 'Daily Avg [PM] µg/m^3',
-       color = "Year",
-       title = "Daily PM Patterns",
-       subtitle = "May")+
-  facet_wrap(~ Station, dir = 'v')+
-  theme_bw()+
-  theme(
-    strip.text.x = element_text(margin = margin(2, 0, 2, 0))
-  )
-May_Daily_PM_plot
-```
-
-## Diurnal Analysis
-
-Diurnal weekday analysis:
-```{r message = FALSE, warning = FALSE}
-PM_2 <- PM_2 %>% 
-  rmw_prepare_data(na.rm = TRUE)
-
-# Create weekday dataframe
-COVID_Linear_weekday <- PM_2 %>%
-  filter(weekday >= 1,
-         weekday < 6)
-
-# Remove NA values
-COVID_Linear_weekday <- COVID_Linear_weekday[!is.na(COVID_Linear_weekday$value), ]
-
-# Remove negative values
-COVID_Linear_weekday <- COVID_Linear_weekday %>%
-  filter(value >= 0)
-
-# Make 'Year' column a factor
-COVID_Linear_weekday$Year <- as.factor(COVID_Linear_weekday$Year)
-
-# Create the two-year average values to compare to the COVID experimental period value. 
-COVID_Linear_weekday <- COVID_Linear_weekday %>%
-  mutate(Period = case_when(
-    Year == '19'~ '2019',
-    Year == '20' ~ '2020'))
-```
-
-Diurnal weekday averages by year:
-```{r message = FALSE, warning = FALSE}
-# Weekday summary dataframe
-Weekday_Diurnal_Avgs_PM <- summarySE(COVID_Linear_weekday, measurevar= "value", groupvars=c('Station', "Year", "Month", "Hour" ))
-
-# Make 'Year' column a factor
-Weekday_Diurnal_Avgs_PM$Year <- as.factor(Weekday_Diurnal_Avgs_PM$Year)
-
-# Isolate May
-May_weekday_Diurnal_Avgs_PM <- Weekday_Diurnal_Avgs_PM %>%
-  filter(Month == '05')
-```
-
-Diurnal May multiplot weekday:
-```{r message = FALSE, warning = FALSE}
-# Create separate dataframes for each year
-May_weekday_Diurnal_Avgs_PM_19 <- May_weekday_Diurnal_Avgs_PM %>%
-  filter(Year == '19')
-May_weekday_Diurnal_Avgs_PM_20 <- May_weekday_Diurnal_Avgs_PM %>%
-  filter(Year == '20')
-
-# Merge dataframes together
-May_weekday_Diurnal_Avgs_PM_19_20 <- cbind(May_weekday_Diurnal_Avgs_PM_19,May_weekday_Diurnal_Avgs_PM_20)
-May_weekday_Diurnal_Avgs_PM_19_20 <- May_weekday_Diurnal_Avgs_PM_19_20[,-c(10:14)]
-
-# Calculate avg hourly differences
-Hryl_diff_PM_19_20 <- May_weekday_Diurnal_Avgs_PM_19_20 %>%
-  mutate(hrly_diff = value-value.1)
-write.csv(Hryl_diff_PM_19_20, "~/Desktop/Hryl_diff_PM_19_20_weekday.csv")
-
-Hryl_diff_PM_19_20_sum <- summarySE(Hryl_diff_PM_19_20, measurevar= "hrly_diff", groupvars=c('Station'))
-
-# Line plot of diurnal patterns by year
-May_weekday_Diurnal_PM_plot <- ggplot(data = May_weekday_Diurnal_Avgs_PM_19_20, aes(Hour)) +
-  geom_line(aes(y = value, group = 1, colour = "2019")) +
-  geom_line(aes(y = value.1, group = 1, colour = "2020")) + 
-  geom_errorbar(aes(ymin=value-se,
-                    ymax=value+se, colour = "2019"),
-                size=.3,    # Thinner lines
-                width=.2,
-                position=position_dodge(.9)) +
-  geom_errorbar(aes(ymin=value.1-se.1, ymax=value.1+se.1, colour = "2020"),
-                size=.3,    # Thinner lines
-                width=.2,
-                position=position_dodge(.9)) +
-  labs(x = 'Hour',
-       y = 'Hourly Avg [PM] µg/m^3',
-       color = "Year",
-       title = "Weekday Diurnal PM Patterns",
-       subtitle = "May")+
-  facet_wrap(~ Station, dir = 'v')+
-  theme_bw()+
-  theme(
-    strip.text.x = element_text(margin = margin(2, 0, 2, 0), size = 12)
-  )
-May_weekday_Diurnal_PM_plot
-```
-
-Diurnal weekend dataframe:
-```{r message = FALSE, warning = FALSE}
-# Create weekend dataframe
-COVID_Linear_weekend <- PM_2 %>%
-  filter(weekday >= 6,
-         weekday <= 7)
-
-# Remove NA values
-COVID_Linear_weekend <- COVID_Linear_weekend[!is.na(COVID_Linear_weekend$value), ]
-
-# Remove negative values
-COVID_Linear_weekend <- COVID_Linear_weekend %>%
-  filter(value >= 0)
-
-COVID_Linear_weekend$Year <- as.factor(COVID_Linear_weekend$Year)
-
-# Create the two-year average values to compare to the COVID experimental period value. 
-COVID_Linear_weekend <- COVID_Linear_weekend %>%
-  mutate(Period = case_when(
-    Year == '19'~ '2019',
-    Year == '20' ~ '2020'))
-```
-
-Diurnal weekend Averages
-```{r message = FALSE, warning = FALSE}
-# Create summary dataframe
-weekend_Diurnal_Avgs_PM <- summarySE(COVID_Linear_weekend, measurevar= "value", groupvars=c('Station', "Year", "Month", "Hour" ))
-
-# Make 'Year' column a factor
-weekend_Diurnal_Avgs_PM$Year <- as.factor(weekend_Diurnal_Avgs_PM$Year)
-
-# Separate May
-May_weekend_Diurnal_Avgs_PM <- weekend_Diurnal_Avgs_PM %>%
-  filter(Month == '05')
-```
-
-Diurnal May multiplot weekend:
-```{r message = FALSE, warning = FALSE}
-# Create separate dataframes for each year
-May_weekend_Diurnal_Avgs_PM_19 <- May_weekend_Diurnal_Avgs_PM %>%
-  filter(Year == '19')
-May_weekend_Diurnal_Avgs_PM_20 <- May_weekend_Diurnal_Avgs_PM %>%
-  filter(Year == '20')
-
-# Bind dataframes together
-May_weekend_Diurnal_Avgs_PM_19_20 <- cbind( May_weekend_Diurnal_Avgs_PM_19,May_weekend_Diurnal_Avgs_PM_20)
-
-May_weekend_Diurnal_Avgs_PM_19_20 <- May_weekend_Diurnal_Avgs_PM_19_20[,-c(10:14)]
-
-# Calculate avg hourly differences
-Hryl_diff_PM_19_20_weekend <- May_weekend_Diurnal_Avgs_PM_19_20 %>%
-  mutate(hrly_diff = value-value.1)
-write.csv(Hryl_diff_PM_19_20_weekend, "~/Desktop/Hryl_diff_PM_19_20_weekend.csv")
-
-Hryl_diff_PM_19_20_sum_weekend <- summarySE(Hryl_diff_PM_19_20_weekend, measurevar= "hrly_diff", groupvars=c('Station'))
-
-# Line plot of weekend averages
-May_weekend_Diurnal_PM_plot <- ggplot(data = May_weekend_Diurnal_Avgs_PM_19_20, aes(Hour)) +
-  geom_line(aes(y = value, group = 1, colour = "2019")) +
-  geom_line(aes(y = value.1, group = 1, colour = "2020")) +
-  geom_errorbar(aes(ymin=value-se,
-                    ymax=value+se, colour = "2019"),
-                size=.3,    # Thinner lines
-                width=.2,
-                position=position_dodge(.9)) +
-  geom_errorbar(aes(ymin=value.1-se.1, ymax=value.1+se.1, colour = "2020"),
-                size=.3,    # Thinner lines
-                width=.2,
-                position=position_dodge(.9)) +
-  labs(x = 'Hour',
-       y = 'Hourly Avg [PM] µg/m^3',
-       color = "Year",
-       title = "Weekend Diurnal PM Patterns",
-       subtitle = "May")+
-  facet_wrap(~ Station, dir = 'v')+
-  theme_bw()+
-  theme(
-    strip.text.x = element_text(margin = margin(2, 0, 2, 0), size = 12)
-  )
-May_weekend_Diurnal_PM_plot
 ```
