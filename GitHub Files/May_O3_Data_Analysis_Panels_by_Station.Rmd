@@ -1,5 +1,5 @@
 ---
-title: "May O3 Data Analysis - Panels by Station"
+title: "O3 Analysis for 2017-2020 BAU v.s. COVID"
 author: "Henry Perillo"
 date: "6/23/2020"
 output: html_document
@@ -11,7 +11,7 @@ This markdown file details the in-depth analysis of the air quality data for Rat
 
 First, library the necessary packages:
 ```{r message = FALSE, warning = FALSE}
-# Clear working environment
+# Clear working environment.
 rm(list = ls())
 
 # Load Packages
@@ -34,17 +34,17 @@ library(knitr)
 
 Call file:
 ```{r message = FALSE, warning = FALSE}
-# Set working directory
+# Set working directory.
 setwd("~/Documents/MSc_ES_AQ_Research_Project/Data/AQ/Final_Data")
 
-# Load data from master file
+# Load data from master file.
 o3 <- read_csv('O3.csv')
 ```
 
 Edit dataframe: 
 ```{r message = FALSE, warning = FALSE}
-# We're left with a dataframe containing hourly O3 values for
-# every day of 2018. Now, let's isolate the columns of interest.
+# We're left with a dataframe containing hourly O3 values. 
+# Now, let's isolate the columns of interest.
 O3 <- o3 %>%
   dplyr::rename(`Rathmines (U-B)` = `Rathmines`,
          `Clonskeagh (S-B)` = `Clonskeagh`,
@@ -66,7 +66,7 @@ O3 <- O3 %>%
          Date = str_sub(date,9,10),
          Hour = str_sub (date, 12, 13))
 
-# We'll make all of our data numerical:
+# We'll make all of our data numerical. 
 O3 <- O3 %>%
   mutate(value = as.numeric(value))
 ```
@@ -75,25 +75,25 @@ The result is a cleaner dataframe that holds hourly meteorlogical and air qualit
 
 Create linear dataframe: 
 ```{r message = FALSE, warning = FALSE}
-# Use rmweather to create a dataframe with 'weekday' column
+# Use rmweather to create a dataframe with 'weekday' column.
 O3 <- O3 %>% 
   rmw_prepare_data(na.rm = TRUE)
 
-# Remove negative values
+# Remove negative values.
 O3 <- O3 %>%
   filter(value >= 0)
 
-# Make 'Month' data numerical
+# Make 'Month' data numerical.
 O3$Month <- as.numeric(O3$Month)
 
-# Filter months
+# Filter months.
 COVID_Linear <- O3%>%
   filter(Month < 7)
 
-# Create new dataframe with summary values for each variable
+# Create new dataframe with summary values for each variable.
 COVID_Linear_Daily <- summarySE(COVID_Linear, measurevar= "value", groupvars=c('Station', "Month", "Year", 'Date'))
 
-# Add an ID column for weeks to enable gtrouping later
+# Add an ID column for weeks to enable gtrouping later.
 COVID_Linear_Daily <- COVID_Linear_Daily %>%
   mutate(Week = case_when(
     Date >= '01' & Date <= '07' ~ 1,
@@ -104,34 +104,34 @@ COVID_Linear_Daily <- COVID_Linear_Daily %>%
 
 Examine monthly averages: 
 ```{r message = FALSE, warning = FALSE}
-# Create monthly summary dataframe
+# Create monthly summary dataframe.
 Monthly_Avgs_O3 <- summarySE(COVID_Linear_Daily, measurevar= "value", groupvars=c('Station', "Month", "Year"))
 
-# Make month column numerical
+# Make month column numerical.
 Monthly_Avgs_O3$Month <- as.numeric(Monthly_Avgs_O3$Month)
 
-# Isolate May
+# Isolate May.
 May_Monthly_Avgs_O3 <- Monthly_Avgs_O3 %>%
   filter(Month == 5)
 ```
 
 Check the residuals for normality:
 ```{r message = FALSE, warning = FALSE}
-# Create the residuals dataframe:
+# Create the residuals dataframe.
 o3$date <- dmy_hm(o3$date)
 
-# We'll make all of our data numerical:
+# We'll make all of our data numerical.
 o3 <- o3 %>%
   mutate(Rathmines = as.numeric(Rathmines),
          `Swords` = as.numeric(`Swords`),
          `Clonskeagh` = as.numeric(`Clonskeagh`))
 
-# Remove NA values
+# Remove NA values.
 o3 <- o3[!is.na(o3$Rathmines), ]
 o3 <- o3[!is.na(o3$`Clonskeagh`), ]
 o3 <- o3[!is.na(o3$`Swords`), ]
 
-# Remove negative values
+# Remove negative values.
 o3 <- o3 %>%
   filter(Rathmines >= 0,
          `Clonskeagh` >= 0,
@@ -150,40 +150,40 @@ May_O3 <- o3 %>%
 
 Residuals for Rathmines:
 ```{r}
-# Build the linear model
+# Build the linear model.
 May_Rath_O3.lm <- lm(Rathmines ~ Year, data = May_O3)
 
-# Create a QQ plot of residuals
+# Create a QQ plot of residuals.
 qqnorm(residuals(May_Rath_O3.lm))
 qqline(residuals(May_Rath_O3.lm), col = "red")
 
-# Shapiro-wilk test
+# Shapiro-wilk test.
 shapiro.test(residuals(May_Rath_O3.lm))
 ```
 
 Residuals for Clonskeagh
 ```{r message = FALSE, warning = FALSE}
-# Build the linear model
+# Build the linear model.
 May_Clon_O3.lm <- lm(`Clonskeagh` ~ Year, data = May_O3)
 
-# Create a QQ plot of residuals
+# Create a QQ plot of residuals.
 qqnorm(residuals(May_Clon_O3.lm))
 qqline(residuals(May_Clon_O3.lm), col = "red")
 
-# Shapiro-wilk test
+# Shapiro-wilk test.
 shapiro.test(residuals(May_Clon_O3.lm))
 ```
 
 Residuals for Swords
 ```{r message = FALSE, warning = FALSE}
-# Build the linear model
+# Build the linear model.
 May_Sword_O3.lm <- lm(`Swords` ~ Year, data = May_O3)
 
-# Create a QQ plot of residuals
+# Create a QQ plot of residuals.
 qqnorm(residuals(May_Sword_O3.lm))
 qqline(residuals(May_Sword_O3.lm), col = "red")
 
-# Shapiro-wilk test
+# Shapiro-wilk test.
 shapiro.test(residuals(May_Sword_O3.lm))
 ```
 
@@ -191,7 +191,7 @@ shapiro.test(residuals(May_Sword_O3.lm))
 
 May monthly multiplot:
 ```{r message = FALSE, warning = FALSE}
-# Barplot
+# Barplot.
 May_Monthly_O3_plot <- ggplot(May_Monthly_Avgs_O3, aes(x=Year, y=value)) + 
   geom_point(stat="identity",
              size=1) +      # Thinner lines
@@ -213,7 +213,7 @@ May_Monthly_O3_plot
 
 Create separate dataframes for each monitoring station: 
 ```{r message = FALSE, warning = FALSE}
-# Dataframe by station
+# Dataframe by station.
 Rath_Monthly_Avgs_May_O3 <- COVID_Linear_Daily %>%
   filter(Station == "Rathmines (U-B)",
          Month == 5)
@@ -224,111 +224,43 @@ Clon_Monthly_Avgs_May_O3 <- COVID_Linear_Daily %>%
   filter(Station == "Clonskeagh (S-B)",
          Month == 5)
 
-# Kruskall-wallis test for Rathmines
+# Kruskall-wallis test for Rathmines.
 May_Rath.w <- kruskal.test(value ~ Year, data = Rath_Monthly_Avgs_May_O3)
 pairwise.wilcox.test(Rath_Monthly_Avgs_May_O3$value, Rath_Monthly_Avgs_May_O3$Year,
                  p.adjust.method = "BH")
 
-# Kruskall-wallis test for Clonskeagh
+# Kruskall-wallis test for Clonskeagh.
 May_Clon.w <- kruskal.test(value ~ Year, data = Clon_Monthly_Avgs_May_O3)
 pairwise.wilcox.test(Clon_Monthly_Avgs_May_O3$value, Clon_Monthly_Avgs_May_O3$Year,
                  p.adjust.method = "BH")
 
-# Kruskall-wallis test for Swords
+# Kruskall-wallis test for Swords.
 May_Sword.w <- kruskal.test(value ~ Year, data = Sword_Monthly_Avgs_May_O3)
 pairwise.wilcox.test(Sword_Monthly_Avgs_May_O3$value, Sword_Monthly_Avgs_May_O3$Year,
                  p.adjust.method = "BH")
-```
-
-## Weekly
-
-Weekly dataframe:
-```{r message = FALSE, warning = FALSE}
-# Summary dataframe
-Weekly_Avgs_O3 <- summarySE(COVID_Linear_Daily, measurevar= "value", groupvars=c('Station', "Month", "Week", "Year"))
-
-# Make the 'Week' column numerical
-Weekly_Avgs_O3$Week <- as.numeric(Weekly_Avgs_O3$Week)
-
-# Filter by month
-May_Weekly_Avgs_O3 <- Weekly_Avgs_O3 %>%
-  filter(Month == 5)
-```
-
-May weekly multiplot:
-```{r message = FALSE, warning = FALSE}
-# Line plot for weeks
-May_Weekly_O3_plot <- ggplot(data = May_Weekly_Avgs_O3, aes(x = Week, y = value)) +
-  geom_line(aes(color = Year)) + 
-  geom_errorbar(aes(ymin=value-se, ymax=value+se, color = Year),
-                size=.3,    # Thinner lines
-                width=.2) +
-  labs(x = 'Week',
-       y = 'Weekly Avg [O3] µg/m^3',
-       color = "Year",
-       title = "Weekly O3 Patterns",
-       subtitle = "May")+
-  facet_wrap(~ Station, dir = 'v')+
-  theme_bw()+
-  theme(
-    strip.text.x = element_text(margin = margin(2, 0, 2, 0))
-  )
-May_Weekly_O3_plot
-```
-
-## Daily
-
-Daily averages: 
-```{r message = FALSE, warning = FALSE}
-# Filter by month
-May_Daily_Avgs_O3 <- COVID_Linear_Daily %>%
-  filter(Month == 5)
-
-# Make 'Date' column numeric
-May_Daily_Avgs_O3$Date <- as.numeric(May_Daily_Avgs_O3$Date)
-```
-
-Daily multiplot:
-```{r message = FALSE, warning = FALSE}
-# Line plot for days
-May_Daily_O3_plot <- ggplot(data = May_Daily_Avgs_O3, aes(x = Date, y = value)) +
-  geom_line(aes(color = Year)) + 
-  geom_errorbar(aes(ymin=value-se, ymax=value+se, color = Year),
-                size=.3,    # Thinner lines
-                width=.2)+
-  labs(x = 'Date',
-       y = 'Daily Avg [O3] µg/m^3',
-       color = "Year",
-       title = "Daily O3 Patterns",
-       subtitle = "May")+
-  facet_wrap(~ Station, dir = 'v')+
-  theme_bw()+
-  theme(
-    strip.text.x = element_text(margin = margin(2, 0, 2, 0))
-  )
-May_Daily_O3_plot
 ```
 
 ## Diurnal Analysis
 
 Diurnal weekday analysis:
 ```{r message = FALSE, warning = FALSE}
-# Create weekday dataframe
+# Create weekday dataframe.
 COVID_Linear_weekday <- COVID_Linear %>%
   filter(weekday >= 1,
          weekday < 6)
 
-# Remove NA values
+# Remove NA values.
 COVID_Linear_weekday <- COVID_Linear_weekday[!is.na(COVID_Linear_weekday$value), ]
 
-# Remove negative values
+# Remove negative values.
 COVID_Linear_weekday <- COVID_Linear_weekday %>%
   filter(value >= 0)
 
-# Make 'Year' column a factor
+# Make 'Year' column a factor.
 COVID_Linear_weekday$Year <- as.factor(COVID_Linear_weekday$Year)
 
-# Create the two-year average values to compare to the COVID experimental period value. 
+# Create the two-year average values 
+# to compare to the COVID experimental period value. 
 COVID_Linear_weekday <- COVID_Linear_weekday %>%
   mutate(Period = case_when(
     Year == '19'| Year =='18' | Year == '17' ~ '2017-2019',
@@ -337,20 +269,20 @@ COVID_Linear_weekday <- COVID_Linear_weekday %>%
 
 Diurnal weekday averages by year:
 ```{r message = FALSE, warning = FALSE}
-# Weekday summary dataframe
+# Weekday summary dataframe.
 Weekday_Diurnal_Avgs_O3 <- summarySE(COVID_Linear_weekday, measurevar= "value", groupvars=c('Station', "Year", "Month", "Hour" ))
 
-# Make 'Year' column a factor
+# Make 'Year' column a factor.
 Weekday_Diurnal_Avgs_O3$Year <- as.factor(Weekday_Diurnal_Avgs_O3$Year)
 
-# Isolate May
+# Isolate May.
 May_weekday_Diurnal_Avgs_O3 <- Weekday_Diurnal_Avgs_O3 %>%
   filter(Month == 5)
 ```
 
 Diurnal May multiplot weekday:
 ```{r message = FALSE, warning = FALSE}
-# Create separate dataframes for each year
+# Create separate dataframes for each year.
 May_weekday_Diurnal_Avgs_O3_17 <- May_weekday_Diurnal_Avgs_O3 %>%
   filter(Year == '17')
 May_weekday_Diurnal_Avgs_O3_18 <- May_weekday_Diurnal_Avgs_O3 %>%
@@ -360,11 +292,11 @@ May_weekday_Diurnal_Avgs_O3_19 <- May_weekday_Diurnal_Avgs_O3 %>%
 May_weekday_Diurnal_Avgs_O3_20 <- May_weekday_Diurnal_Avgs_O3 %>%
   filter(Year == '20')
 
-# Merge dataframes together
+# Merge dataframes together.
 May_weekday_Diurnal_Avgs_O3_17_20 <- cbind(May_weekday_Diurnal_Avgs_O3_17, May_weekday_Diurnal_Avgs_O3_18, May_weekday_Diurnal_Avgs_O3_19,May_weekday_Diurnal_Avgs_O3_20)
 May_weekday_Diurnal_Avgs_O3_17_20 <- May_weekday_Diurnal_Avgs_O3_17_20[,-c(10:14, 19:23, 28:32)]
 
-# Calculate avg hourly differences
+# Calculate avg hourly differences.
 Hryl_diff_O3_17_20_indiv <- May_weekday_Diurnal_Avgs_O3_17_20 %>%
   mutate(hrly_diff_1 = value-value.3,
          hrly_diff_2 = value.1-value.3, 
@@ -374,7 +306,7 @@ Hryl_diff_O3_17_20_indiv_sum_1 <- summarySE(Hryl_diff_O3_17_20_indiv, measurevar
 Hryl_diff_O3_17_20_indiv_sum_2 <- summarySE(Hryl_diff_O3_17_20_indiv, measurevar= "hrly_diff_2", groupvars=c('Station'))
 Hryl_diff_O3_17_20_indiv_sum_3 <- summarySE(Hryl_diff_O3_17_20_indiv, measurevar= "hrly_diff_3", groupvars=c('Station'))
 
-# Line plot of diurnal patterns by year
+# Line plot of diurnal patterns by year.
 May_weekday_Diurnal_O3_plot <- ggplot(data = May_weekday_Diurnal_Avgs_O3_17_20, aes(Hour)) +
   geom_line(aes(y = value, group = 1, colour = "2017")) +
   geom_line(aes(y = value.1, group = 1, colour = "2018")) +
@@ -412,38 +344,38 @@ May_weekday_Diurnal_O3_plot
 
 Diurnal weekday averages by period:
 ```{r message = FALSE, warning = FALSE}
-# Weekday summary dataframe
+# Weekday summary dataframe.
 Weekday_period_Diurnal_Avgs_O3 <- summarySE(COVID_Linear_weekday, measurevar= "value", groupvars=c('Station', "Period", "Month", "Hour" ))
 
-# Make 'Year' column a factor
+# Make 'Year' column a factor.
 Weekday_period_Diurnal_Avgs_O3$Period <- as.factor(Weekday_period_Diurnal_Avgs_O3$Period)
 
-# Separate May
+# Separate May.
 May_Weekday_period_Diurnal_Avgs_O3 <- Weekday_period_Diurnal_Avgs_O3 %>%
   filter(Month == 5)
 ```
 
 Diurnal May multiplot weekday:
 ```{r message = FALSE, warning = FALSE}
-# Create separate dataframes for each period
+# Create separate dataframes for each period.
 May_Weekday_period_Diurnal_Avgs_O3_17_19 <- May_Weekday_period_Diurnal_Avgs_O3 %>%
   filter(Period == '2017-2019')
 May_Weekday_period_Diurnal_Avgs_O3_20 <- May_Weekday_period_Diurnal_Avgs_O3 %>%
   filter(Period == '2020')
 
-# Merge dataframes together
+# Merge dataframes together.
 May_Weekday_period_Diurnal_Avgs_O3_17_20 <- cbind(May_Weekday_period_Diurnal_Avgs_O3_17_19,May_Weekday_period_Diurnal_Avgs_O3_20)
 
 May_Weekday_period_Diurnal_Avgs_O3_17_20 <- May_Weekday_period_Diurnal_Avgs_O3_17_20[,-c(10:14)]
 
-# Calculate avg hourly differences
+# Calculate avg hourly differences.
 Hryl_diff_O3_17_20 <- May_Weekday_period_Diurnal_Avgs_O3_17_20 %>%
   mutate(hrly_diff = value-value.1)
 write.csv(Hryl_diff_O3_17_20, "~/Desktop/Hryl_diff_O3_17_20.csv")
 
 Hryl_diff_O3_17_20_sum <- summarySE(Hryl_diff_O3_17_20, measurevar= "hrly_diff", groupvars=c('Station'))
 
-# Line plot of diurnal patterns by time period
+# Line plot of diurnal patterns by time period.
 May_Weekday_period_Diurnal_O3_plot <- ggplot(data = May_Weekday_period_Diurnal_Avgs_O3_17_20, aes(Hour)) +
   geom_line(aes(y = value, group = 1, colour = "2017-2019 Avg")) +
   geom_line(aes(y = value.1, group = 1, colour = "2020")) +
@@ -474,21 +406,22 @@ May_Weekday_period_Diurnal_O3_plot
 
 Diurnal weekend dataframe:
 ```{r message = FALSE, warning = FALSE}
-# Create weekend dataframe
+# Create weekend dataframe.
 COVID_Linear_weekend <- COVID_Linear %>%
   filter(weekday >= 6,
          weekday <= 7)
 
-# Remove NA values
+# Remove NA values.
 COVID_Linear_weekend <- COVID_Linear_weekend[!is.na(COVID_Linear_weekend$value), ]
 
-# Remove negative values
+# Remove negative values.
 COVID_Linear_weekend <- COVID_Linear_weekend %>%
   filter(value >= 0)
 
 COVID_Linear_weekend$Year <- as.factor(COVID_Linear_weekend$Year)
 
-# Create the two-year average values to compare to the COVID experimental period value. 
+# Create the two-year average values to 
+# compare to the COVID experimental period value. 
 COVID_Linear_weekend <- COVID_Linear_weekend %>%
   mutate(Period = case_when(
     Year == '19'| Year =='18' | Year == '17' ~ '2017-2019',
@@ -497,20 +430,20 @@ COVID_Linear_weekend <- COVID_Linear_weekend %>%
 
 Diurnal weekend Averages
 ```{r message = FALSE, warning = FALSE}
-# Create summary dataframe
+# Create summary dataframe.
 weekend_Diurnal_Avgs_O3 <- summarySE(COVID_Linear_weekend, measurevar= "value", groupvars=c('Station', "Year", "Month", "Hour" ))
 
-# Make 'Year' column a factor
+# Make 'Year' column a factor.
 weekend_Diurnal_Avgs_O3$Year <- as.factor(weekend_Diurnal_Avgs_O3$Year)
 
-# Separate May
+# Separate May.
 May_weekend_Diurnal_Avgs_O3 <- weekend_Diurnal_Avgs_O3 %>%
   filter(Month == 5)
 ```
 
 Diurnal May multiplot weekend:
 ```{r message = FALSE, warning = FALSE}
-# Create separate dataframes for each year
+# Create separate dataframes for each year.
 May_weekend_Diurnal_Avgs_O3_17 <- May_weekend_Diurnal_Avgs_O3 %>%
   filter(Year == '17')
 May_weekend_Diurnal_Avgs_O3_18 <- May_weekend_Diurnal_Avgs_O3 %>%
@@ -520,12 +453,12 @@ May_weekend_Diurnal_Avgs_O3_19 <- May_weekend_Diurnal_Avgs_O3 %>%
 May_weekend_Diurnal_Avgs_O3_20 <- May_weekend_Diurnal_Avgs_O3 %>%
   filter(Year == '20')
 
-# Bind dataframes together
+# Bind dataframes together.
 May_weekend_Diurnal_Avgs_O3_17_20 <- cbind(May_weekend_Diurnal_Avgs_O3_17, May_weekend_Diurnal_Avgs_O3_18, May_weekend_Diurnal_Avgs_O3_19,May_weekend_Diurnal_Avgs_O3_20)
 
 May_weekend_Diurnal_Avgs_O3_17_20 <- May_weekend_Diurnal_Avgs_O3_17_20[,-c(10:14, 19:23, 28:32)]
 
-# Calculate avg hourly differences
+# Calculate avg hourly differences.
 Hryl_diff_O3_17_20_indiv_weekend <- May_weekend_Diurnal_Avgs_O3_17_20 %>%
   mutate(hrly_diff_1 = value-value.3,
          hrly_diff_2 = value.1-value.3, 
@@ -534,7 +467,7 @@ Hryl_diff_O3_17_20_indiv_weekend_sum_1 <- summarySE(Hryl_diff_O3_17_20_indiv_wee
 Hryl_diff_O3_17_20_indiv_weekend_sum_2 <- summarySE(Hryl_diff_O3_17_20_indiv_weekend, measurevar= "hrly_diff_2", groupvars=c('Station'))
 Hryl_diff_O3_17_20_indiv_weekend_sum_3 <- summarySE(Hryl_diff_O3_17_20_indiv_weekend, measurevar= "hrly_diff_3", groupvars=c('Station'))
 
-# Line plot of weekend averages
+# Line plot of weekend averages.
 May_weekend_Diurnal_O3_plot <- ggplot(data = May_weekend_Diurnal_Avgs_O3_17_20, aes(Hour)) +
   geom_line(aes(y = value, group = 1, colour = "2017")) +
   geom_line(aes(y = value.1, group = 1, colour = "2018")) +
@@ -572,37 +505,37 @@ May_weekend_Diurnal_O3_plot
 
 Diurnal weekend averages by period: 
 ```{r message = FALSE, warning = FALSE}
-# Create weekend summary dataframe by period
+# Create weekend summary dataframe by period.
 weekend_period_Diurnal_Avgs_O3 <- summarySE(COVID_Linear_weekend, measurevar= "value", groupvars=c('Station', "Period", "Month", "Hour" ))
 
-# Make 'Period' a factor
+# Make 'Period' a factor.
 weekend_period_Diurnal_Avgs_O3$Period <- as.factor(weekend_period_Diurnal_Avgs_O3$Period)
 
-# Isolate May
+# Isolate May.
 May_weekend_period_Diurnal_Avgs_O3 <- weekend_period_Diurnal_Avgs_O3 %>%
   filter(Month == 5)
 ```
 
 Diurnal May multiplot weekend:
 ```{r message=FALSE, warning=FALSE}
-# Create separate dataframes for each period
+# Create separate dataframes for each period.
 May_weekend_period_Diurnal_Avgs_O3_17_19 <- May_weekend_period_Diurnal_Avgs_O3 %>%
   filter(Period == '2017-2019')
 May_weekend_period_Diurnal_Avgs_O3_20 <- May_weekend_period_Diurnal_Avgs_O3 %>%
   filter(Period == '2020')
 
-# Bind dataframes together
+# Bind dataframes together.
 May_weekend_period_Diurnal_Avgs_O3_17_20 <- cbind(May_weekend_period_Diurnal_Avgs_O3_17_19,May_weekend_period_Diurnal_Avgs_O3_20)
 
 May_weekend_period_Diurnal_Avgs_O3_17_20 <- May_weekend_period_Diurnal_Avgs_O3_17_20[,-c(10:14)]
 
-# Calculate avg hourly differences
+# Calculate avg hourly differences.
 Hryl_diff_O3_17_20_weekend <- May_weekend_period_Diurnal_Avgs_O3_17_20 %>%
   mutate(hrly_diff = value-value.1)
 write.csv(Hryl_diff_O3_17_20_weekend, "~/Desktop/Hryl_diff_O3_17_20_weekend.csv")
 Hryl_diff_O3_17_20_sum_weekend <- summarySE(Hryl_diff_O3_17_20_weekend, measurevar= "hrly_diff", groupvars=c('Station'))
 
-# Create lineplot
+# Create lineplot.
 May_weekend_period_Diurnal_O3_plot <- ggplot(data = May_weekend_period_Diurnal_Avgs_O3_17_20, aes(Hour)) +
   geom_line(aes(y = value, group = 1, colour = "2017-2019 Avg")) +
   geom_line(aes(y = value.1, group = 1, colour = "2020")) +
